@@ -9,6 +9,9 @@
  */
 
 $user = app()->auth->getCurUser();
+
+use App\Entity\User\UserRole;
+
 ?>
 
 <!-- TODO fix nav miss in sm -->
@@ -44,7 +47,7 @@ $user = app()->auth->getCurUser();
     <div id="info_block_line_1">
         Welcome Back, <?= $this->insert('helper/username', ['user' => $user, 'show_badge' => true]) ?>
         <span data-item="logout"><!--suppress HtmlUnknownTarget -->[<a href="/auth/logout">Logout</a>]</span>
-        <?php if ($user->getClass() > \App\Entity\User::ROLE_FORUM_MODERATOR): ?>
+        <?php if ($user->getClass() > UserRole::FORUM_MODERATOR): ?>
             <span><!--suppress HtmlUnknownTarget -->[<a href="/admin">Admin Panel</a>]</span>
         <?php endif; ?>
         <span data-item="favour"><!--suppress HtmlUnknownTarget -->[<a href="/torrents/favour">Favour</a>]</span>
@@ -70,7 +73,7 @@ $user = app()->auth->getCurUser();
     </div>
     <div id="info_block_line_2">
         <span data-item="ratio" data-ratio="<?= $this->e($user->getRatio()) ?>">
-            <span class="color-ratio">Ratio:</span> <?= is_string($user->getRatio()) ? $user->getRatio() : round($user->getRatio(),3) ?>
+            <span class="color-ratio">Ratio:</span> <?= is_string($user->getRatio()) ? $user->getRatio() : round($user->getRatio(), 3) ?>
         </span>&nbsp;
         <span data-item="uploaded" data-uploaded="<?= $this->e($user->getUploaded()) ?>">
             <span class="color-seeding">Uploaded:</span> <?= $this->e($user->getUploaded(), 'format_bytes') ?>

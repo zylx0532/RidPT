@@ -11,7 +11,9 @@
 
 $torrent = $edit->getTorrent();
 
-use App\Entity\Torrent; ?>
+use App\Entity\Torrent\TorrentStatus;
+
+?>
 
 <?= $this->layout('layout/base') ?>
 
@@ -156,7 +158,7 @@ use App\Entity\Torrent; ?>
                         </div>
                     </div>
                     <div class="col-md-3">
-                        <div class="switch<?= app()->auth->getCurUser()->isPrivilege('upload_flag_hr') ? '' : ' disabled'  // FIXME Config key ?>">
+                        <div class="switch<?= app()->auth->getCurUser()->isPrivilege('upload_flag_hr') ? '' : ' disabled'  // FIXME Config key?>">
                             <input type="checkbox" id="hr" name="hr" value="1" <?= $torrent->getHr() ? ' checked' : '' ?>><label for="hr">H&R</label>
                         </div>
                     </div>
@@ -173,7 +175,7 @@ use App\Entity\Torrent; ?>
                         <div class="input-group">
                             <span class="input-group-addon"><label for="status">Status</label></span>
                             <select id="status" name="status" class="form-control">
-                                <?php foreach (Torrent::TORRENT_STATUSES as $status) : ?>
+                                <?php foreach (TorrentStatus::TORRENT_STATUSES as $status) : ?>
                                     <option value="<?= $status ?>" <?= $torrent->getStatus() == $status ? 'selected' : '' ?>><?= $status ?></option>
                                 <?php endforeach; ?>
                             </select>

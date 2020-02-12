@@ -10,7 +10,6 @@ use Swoole\Http\Server;
  *
  * @property \Rid\Http\Error $error
  * @property \Rid\Http\Session $session
- * @property \Rid\Http\Cookie $cookie
  * @property \Rid\Http\Route $route
  * @property \Rid\Http\Request $request
  * @property \Rid\Http\Response $response
@@ -31,10 +30,11 @@ class Application extends \Rid\Base\Application
     // 执行功能
     public function run()
     {
-        $server                        = \Rid::app()->request->server();
-        $method                        = strtoupper($server['request_method']);
-        $action                        = empty($server['path_info']) ? '' : substr($server['path_info'], 1);
-        \Rid::app()->response->content = $this->runAction($method, $action);
+        $server                        = \Rid::app()->request->server->all();
+        $method                        = strtoupper($server['REQUEST_METHOD']);
+        $action                        = empty($server['PATH_INFO']) ? '' : substr($server['PATH_INFO'], 1);
+        \Rid::app()->response->setContent($this->runAction($method, $action));
+        \Rid::app()->response->prepare(\Rid::app()->request);
         \Rid::app()->response->send();
     }
 
@@ -174,9 +174,9 @@ class Application extends \Rid\Base\Application
         ob_start();
         var_dump($var);
         $dumpContent                   = ob_get_clean();
-        \Rid::app()->response->content .= $dumpContent;
+        \Rid::app()->response->setContent(\Rid::app()->response->getContent() . $dumpContent);
         if ($send) {
-            throw new \Rid\Exceptions\DebugException(\Rid::app()->response->content);
+            throw new \Rid\Exceptions\DebugException(\Rid::app()->response->getContent());
         }
     }
 
@@ -201,5 +201,4 @@ class Application extends \Rid\Base\Application
     {
         $this->_serv = $serv;
     }
-
 }

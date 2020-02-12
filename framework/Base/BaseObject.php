@@ -7,7 +7,6 @@ namespace Rid\Base;
  */
 abstract class BaseObject implements StaticInstanceInterface
 {
-
     use StaticInstanceTrait;
 
     // 构造
@@ -18,7 +17,7 @@ abstract class BaseObject implements StaticInstanceInterface
         // 构建配置
         $config = \Rid::configure($config);
         // 导入属性
-        \Rid::importAttributes($this, $config);
+        $this->importAttributes($config);
         // 执行初始化事件
         $this->onInitialize();
     }
@@ -43,5 +42,4 @@ abstract class BaseObject implements StaticInstanceInterface
     public function onDestruct()
     {
     }
-
 }

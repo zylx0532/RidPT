@@ -9,16 +9,13 @@
 namespace App\Models\Form\Auth;
 
 use App\Libraries\Constant;
-use App\Entity\User;
+use App\Entity\User\UserStatus;
 
 use Rid\Helpers\StringHelper;
 use Rid\Helpers\JWTHelper;
 use Rid\Validators\CaptchaTrait;
 use Rid\Validators\Validator;
-
-use RobThree\Auth\TwoFactorAuth;
-use RobThree\Auth\TwoFactorAuthException;
-
+use Symfony\Component\HttpFoundation\Cookie;
 
 class UserLoginForm extends Validator
 {
@@ -65,7 +62,7 @@ class UserLoginForm extends Validator
     /** @noinspection PhpUnused */
     protected function loadUserFromPdo()
     {
-        $this->self = app()->pdo->createCommand('SELECT `id`,`username`,`password`,`status`,`opt`,`class` from users WHERE `username` = :uname OR `email` = :email LIMIT 1')->bindParams([
+        $this->self = app()->pdo->prepare('SELECT `id`,`username`,`password`,`status`,`opt`,`class` from users WHERE `username` = :uname OR `email` = :email LIMIT 1')->bindParams([
             'uname' => $this->getInput('username'), 'email' => $this->getInput('username'),
         ])->queryOne();
 
@@ -87,7 +84,7 @@ class UserLoginForm extends Validator
             return;
         }
 
-        // User enable 2FA but it's code is wrong
+        // FIXME User enable 2FA but it's code is wrong
         /*
         if (!is_null($this->self['opt'])) {
             try {
@@ -104,7 +101,7 @@ class UserLoginForm extends Validator
         */
 
         // User 's status is banned or pending~
-        if (in_array($this->self['status'], [User::STATUS_DISABLED, User::STATUS_PENDING])) {
+        if (in_array($this->self['status'], [UserStatus::DISABLED, UserStatus::PENDING])) {
             $this->buildCallbackFailMsg('Account', 'User account is disabled or may not confirmed.');
             return;
         }
@@ -113,7 +110,7 @@ class UserLoginForm extends Validator
     /** @noinspection PhpUnused */
     protected function isMaxUserSessionsReached()
     {
-        $exist_session_count = app()->pdo->createCommand('SELECT COUNT(`id`) FROM sessions WHERE uid = :uid AND expired != 1')->bindParams([
+        $exist_session_count = app()->pdo->prepare('SELECT COUNT(`id`) FROM sessions WHERE uid = :uid AND expired != 1')->bindParams([
             'uid' => $this->self['id']
         ])->queryScalar();
 
@@ -147,7 +144,7 @@ class UserLoginForm extends Validator
 
         do { // Generate unique JWT ID
             $jti = StringHelper::getRandomString(64);
-            $count = app()->pdo->createCommand('SELECT COUNT(`id`) FROM sessions WHERE session = :sid;')->bindParams([
+            $count = app()->pdo->prepare('SELECT COUNT(`id`) FROM sessions WHERE session = :sid;')->bindParams([
                 'sid' => $jti
             ])->queryScalar();
         } while ($count != 0);
@@ -173,22 +170,23 @@ class UserLoginForm extends Validator
             $payload['ip'] = sprintf('%08x', crc32($login_ip));  // Store User Login IP ( in CRC32 format )
         }
 
-        if ($this->ssl || config('security.ssl_login') > 1)
-            $payload['ssl'] = true;  // Store User want full ssl protect
+        if ($this->ssl || config('security.ssl_login') > 1) {
+            $payload['ssl'] = true;
+        }  // Store User want full ssl protect
 
         // Generate JWT content
         $this->jwt_payload = $payload;
         $jwt = JWTHelper::encode($payload);
 
         // Store User Login Session Information in database
-        app()->pdo->createCommand('INSERT INTO sessions (`uid`, `session`, `login_ip`, `login_at`, `expired`) ' .
+        app()->pdo->prepare('INSERT INTO sessions (`uid`, `session`, `login_ip`, `login_at`, `expired`) ' .
             'VALUES (:uid, :sid, INET6_ATON(:login_ip), NOW(), :expired)')->bindParams([
             'uid' => $this->jwt_payload['aud'], 'sid' => $this->jwt_payload['jti'], 'login_ip' => $login_ip,
             'expired' => ($this->logout === 'yes') ? 0 : -1,  // -1 -> never expired , 0 -> auto_expire after 15 minutes, 1 -> expired
         ])->execute();
 
         // Sent JWT content AS Cookie
-        app()->response->setCookie(Constant::cookie_name, $jwt, $cookieExpire, '/', '', false, true);
+        app()->response->headers->setCookie(new Cookie(Constant::cookie_name, $jwt, $cookieExpire, '/', '', false, true));
     }
 
     private function updateUserLoginInfo()
@@ -196,7 +194,7 @@ class UserLoginForm extends Validator
         $ip = app()->request->getClientIp();
 
         // Update User Tables
-        app()->pdo->createCommand('UPDATE `users` SET `last_login_at` = NOW() , `last_login_ip` = INET6_ATON(:ip) WHERE `id` = :id')->bindParams([
+        app()->pdo->prepare('UPDATE `users` SET `last_login_at` = NOW() , `last_login_ip` = INET6_ATON(:ip) WHERE `id` = :id')->bindParams([
             'ip' => $ip, 'id' => $this->self['id']
         ])->execute();
     }

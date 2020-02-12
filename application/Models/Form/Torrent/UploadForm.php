@@ -9,10 +9,13 @@
 namespace App\Models\Form\Torrent;
 
 use App\Libraries\Constant;
+use App\Entity\Torrent\TorrentStatus;
+use App\Entity\Torrent\TorrentType;
+
 use Rid\Http\UploadFile;
 
-use App\Libraries\Bencode\Bencode;
-use App\Libraries\Bencode\ParseErrorException;
+use Rhilip\Bencode\Bencode;
+use Rhilip\Bencode\ParseErrorException;
 
 class UploadForm extends EditForm
 {
@@ -22,24 +25,16 @@ class UploadForm extends EditForm
 
     private $info_hash; // the value of sha1($this->$torrent_dict['info'])
 
-    private $status = 'confirmed';
+    private $status = TorrentStatus::CONFIRMED;
 
     private $torrent_dict;
     private $torrent_name;    // the $torrent_dict['info']['name'] field
     private $torrent_list = [];  // the file list like ["filename" => "example.txt" , "size" => 12345]
     private $torrent_structure;  // JSON encode string
-    private $torrent_type = 'single'; // only in ['single','multi']
+    private $torrent_type = TorrentType::SINGLE; // only in ['single','multi']
     private $torrent_size = 0;  // the count of torrent's content size
 
     protected $file_name_check_rules;
-
-    const TORRENT_TYPE_SINGLE = 'single';
-    const TORRENT_TYPE_MULTI = 'multi';
-
-    const TORRENT_STATUS_DELETED = 'deleted';
-    const TORRENT_STATUS_BANNED = 'banned';
-    const TORRENT_STATUS_PENDING = 'pending';
-    const TORRENT_STATUS_CONFIRMED = 'confirmed';
 
     public function getId(): int
     {
@@ -69,7 +64,7 @@ class UploadForm extends EditForm
 
         if (config('torrent_upload.enable_upload_nfo') &&  // Enable nfo upload
             app()->auth->getCurUser()->isPrivilege('upload_nfo_file') &&  // This user can upload nfo
-            app()->request->post('nfo')  // Nfo file upload
+            app()->request->request->get('nfo')  // Nfo file upload
         ) {
             $rules['nfo'] = [
                 ['Upload\Extension', ['allowed' => ['nfo', 'txt']]],
@@ -88,8 +83,9 @@ class UploadForm extends EditForm
     /** @noinspection PhpUnused */
     protected function checkUploadPos()
     {
-        if (!app()->auth->getCurUser()->getUploadpos())
-            $this->buildCallbackFailMsg('pos','your upload pos is disabled');
+        if (!app()->auth->getCurUser()->getUploadpos()) {
+            $this->buildCallbackFailMsg('pos', 'your upload pos is disabled');
+        }
     }
 
     /** @noinspection PhpUnused */
@@ -104,7 +100,9 @@ class UploadForm extends EditForm
                 $dname = $this->checkTorrentDict($info, 'name', 'string');
                 $pieces = $this->checkTorrentDict($info, 'pieces', 'string');
 
-                if (strlen($pieces) % 20 != 0) throw new ParseErrorException('std_invalid_pieces');
+                if (strlen($pieces) % 20 != 0) {
+                    throw new ParseErrorException('std_invalid_pieces');
+                }
 
                 if (isset($info['length'])) {
                     $this->torrent_size = $info['length'];
@@ -112,8 +110,12 @@ class UploadForm extends EditForm
                     $this->torrent_type = 'single';
                 } else {
                     $f_list = $this->checkTorrentDict($info, 'files', 'array');
-                    if (!isset($f_list)) throw new ParseErrorException('std_missing_length_and_files');
-                    if (!count($f_list)) throw new ParseErrorException('no files');
+                    if (!isset($f_list)) {
+                        throw new ParseErrorException('std_missing_length_and_files');
+                    }
+                    if (!count($f_list)) {
+                        throw new ParseErrorException('no files');
+                    }
 
                     $this->torrent_size = 0;
                     foreach ($f_list as $fn) {
@@ -123,10 +125,14 @@ class UploadForm extends EditForm
                         $this->torrent_size += $ll;
                         $ffa = [];
                         foreach ($ff as $ffe) {
-                            if (!is_string($ffe)) throw new ParseErrorException('std_filename_errors');
+                            if (!is_string($ffe)) {
+                                throw new ParseErrorException('std_filename_errors');
+                            }
                             $ffa[] = $ffe;
                         }
-                        if (!count($ffa)) throw new ParseErrorException('std_filename_errors');
+                        if (!count($ffa)) {
+                            throw new ParseErrorException('std_filename_errors');
+                        }
                         $this->checkFileName($ffa);
                         $ffe = implode('/', $ffa);
                         $this->torrent_list[] = ['filename' => $ffe, 'size' => $ll];
@@ -147,7 +153,7 @@ class UploadForm extends EditForm
     protected function getFileNameCheckRules()
     {
         if (is_null($this->file_name_check_rules)) {
-            $rules = app()->pdo->createCommand('SELECT `rules` FROM `file_defender` WHERE `category_id` = 0 OR `category_id` = :cat')->bindParams([
+            $rules = app()->pdo->prepare('SELECT `rules` FROM `file_defender` WHERE `category_id` = 0 OR `category_id` = :cat')->bindParams([
                 'cat' => $this->getInput('category')  // Fix cat_id
             ])->queryColumn();
             $this->file_name_check_rules = '/' . implode('|', $rules) . '/iS';
@@ -174,8 +180,12 @@ class UploadForm extends EditForm
         unset($this->torrent_dict['nodes']); // remove cached peers (Bitcomet & Azareus)
 
         // Rewrite `commit` and `created by` if enabled this config
-        if (config('torrent_upload.rewrite_commit_to')) $this->torrent_dict['commit'] = config('torrent_upload.rewrite_commit_to');
-        if (config('torrent_upload.rewrite_createdby_to')) $this->torrent_dict['created by'] = config('torrent_upload.rewrite_createdby_to');
+        if (config('torrent_upload.rewrite_commit_to')) {
+            $this->torrent_dict['commit'] = config('torrent_upload.rewrite_commit_to');
+        }
+        if (config('torrent_upload.rewrite_createdby_to')) {
+            $this->torrent_dict['created by'] = config('torrent_upload.rewrite_createdby_to');
+        }
 
         /**
          * The following line requires uploader to re-download torrents after uploading **Since info_hash change**
@@ -202,12 +212,14 @@ class UploadForm extends EditForm
         $this->info_hash = pack('H*', sha1(Bencode::encode($this->torrent_dict['info'])));
 
         // Check if this torrent is exist or not before insert.
-        $count = app()->pdo->createCommand('SELECT COUNT(*) FROM torrents WHERE info_hash = :info_hash')->bindParams([
+        $count = app()->pdo->prepare('SELECT COUNT(*) FROM torrents WHERE info_hash = :info_hash')->bindParams([
             'info_hash' => $this->info_hash
         ])->queryScalar();
 
         // TODO redirect user to exist torrent details page when this torrent exist.
-        if ($count > 0) $this->buildCallbackFailMsg('Torrent','std_torrent_existed');
+        if ($count > 0) {
+            $this->buildCallbackFailMsg('Torrent', 'std_torrent_existed');
+        }
     }
 
     /**
@@ -226,14 +238,14 @@ class UploadForm extends EditForm
         try {
             $tags = $this->getTags();
 
-            app()->pdo->createCommand('INSERT INTO `torrents` (`owner_id`,`info_hash`,`status`,`added_at`,`title`,`subtitle`,`category`,`filename`,`torrent_name`,`torrent_type`,`torrent_size`,`torrent_structure`,`team`,`quality_audio`,`quality_codec`,`quality_medium`,`quality_resolution`,`descr`,`tags`,`nfo`,`uplver`,`hr`) 
+            app()->pdo->prepare('INSERT INTO `torrents` (`owner_id`,`info_hash`,`status`,`added_at`,`title`,`subtitle`,`category`,`filename`,`torrent_name`,`torrent_type`,`torrent_size`,`torrent_structure`,`team`,`quality_audio`,`quality_codec`,`quality_medium`,`quality_resolution`,`descr`,`tags`,`nfo`,`uplver`,`hr`)
 VALUES (:owner_id, :info_hash, :status, CURRENT_TIMESTAMP, :title, :subtitle, :category, :filename, :torrent_name, :type, :size, :structure,:team,:audio,:codec,:medium,:resolution,:descr, JSON_ARRAY(:tags), :nfo, :uplver, :hr)')->bindParams([
                 'owner_id' => app()->auth->getCurUser()->getId(),
                 'info_hash' => $this->info_hash,
                 'status' => $this->status,
                 'title' => $this->title, 'subtitle' => $this->subtitle,
                 'category' => $this->category,
-                'filename' => $this->file->getBaseName(),
+                'filename' => $this->file->getClientOriginalName(),
                 'torrent_name' => $this->torrent_name, 'type' => $this->torrent_type, 'size' => $this->torrent_size,
                 'structure' => $this->torrent_structure, 'tags' => $tags,  // JSON
                 'audio' => (int)$this->audio, 'codec' => (int)$this->codec,
@@ -268,25 +280,26 @@ VALUES (:owner_id, :info_hash, :status, CURRENT_TIMESTAMP, :title, :subtitle, :c
             throw $e;
         }
 
-       app()->site->writeLog("Torrent {$this->id} ({$this->title}) was uploaded by " . ($this->anonymous ? 'Anonymous' : app()->auth->getCurUser()->getUsername()));
+        app()->site->writeLog("Torrent {$this->id} ({$this->title}) was uploaded by " . ($this->anonymous ? 'Anonymous' : app()->auth->getCurUser()->getUsername()));
     }
 
     // TODO update torrent status based on user class or their owned torrents count
-    private function determineTorrentStatus() {
-        $this->status = self::TORRENT_STATUS_CONFIRMED;
+    private function determineTorrentStatus()
+    {
+        $this->status = TorrentStatus::CONFIRMED;
     }
 
     // TODO sep to Traits
     private function setTorrentBuff($operator_id = 0, $beneficiary_id = 0, $buff_type = 'mod', $ratio_type = 'Normal', $upload_ratio = 1, $download_ratio = 1)
     {
-
     }
 
     // TODO it may take long time to get link details , so when torrent upload, we just push it to task worker
     private function getExternalLinkInfo()
     {
-        if ($this->links)
+        if ($this->links) {
             app()->redis->lPush('queue:external_link_via_torrent_upload', ['tid' => $this->id, 'links' => $this->links]);
+        }
     }
 
     private function setBuff()
@@ -300,7 +313,6 @@ VALUES (:owner_id, :info_hash, :status, CURRENT_TIMESTAMP, :title, :subtitle, :c
         }
 
         // TODO set uploader (or you can say torrents owner) buff
-
     }
 
     /**
@@ -327,7 +339,7 @@ VALUES (:owner_id, :info_hash, :status, CURRENT_TIMESTAMP, :title, :subtitle, :c
     private function getFileTree()
     {
         $structure = array_column($this->torrent_list, 'size', 'filename');
-        if ($this->torrent_type == self::TORRENT_TYPE_MULTI) {
+        if ($this->torrent_type == TorrentType::MULTI) {
             $structure = [$this->torrent_name => self::makeFileTree($structure)];
         }
         return json_encode($structure);
@@ -335,7 +347,9 @@ VALUES (:owner_id, :info_hash, :status, CURRENT_TIMESTAMP, :title, :subtitle, :c
 
     private static function makeFileTree(array $array, $delimiter = '/')
     {
-        if (!is_array($array)) return [];
+        if (!is_array($array)) {
+            return [];
+        }
 
         $splitRE = '/' . preg_quote($delimiter, '/') . '/';
         $returnArr = [];
@@ -373,10 +387,14 @@ VALUES (:owner_id, :info_hash, :status, CURRENT_TIMESTAMP, :title, :subtitle, :c
      */
     private function checkTorrentDict($dict, $key, $type = null)
     {
-        if (!is_array($dict)) throw new ParseErrorException("std_not_a_dictionary");
+        if (!is_array($dict)) {
+            throw new ParseErrorException("std_not_a_dictionary");
+        }
 
         $value = $dict[$key];
-        if (!isset($value)) throw new ParseErrorException("std_dictionary_is_missing_key");
+        if (!isset($value)) {
+            throw new ParseErrorException("std_dictionary_is_missing_key");
+        }
 
         if (!is_null($type)) {
             $isFunction = 'is_' . $type;
@@ -386,6 +404,4 @@ VALUES (:owner_id, :info_hash, :status, CURRENT_TIMESTAMP, :title, :subtitle, :c
         }
         return $value;
     }
-
-
 }

@@ -6,8 +6,11 @@
  * Time: 16:33
  *
  * @var League\Plates\Template\Template $this
- * @var \App\Entity\User $user
+ * @var \App\Entity\User\User $user
  */
+
+use App\Entity\User\UserStatus;
+
 ?>
 
 <?= $this->layout('layout/base') ?>
@@ -17,7 +20,7 @@
     <div class="col-md-10 col-md-offset-1">
         <div class="text-center">
             <h2><?= $user->getUsername() ?>'s Invite System</h2>
-            <?php if(isset($msg)): ?>
+            <?php if (isset($msg)): ?>
             <small class="text-red"><?= $msg ?></small>
             <?php endif; ?>
         </div>
@@ -45,13 +48,13 @@
                     <tr>
                         <td class="text-center"><?= $invitee['username'] ?></td>
                         <td class="text-center"><?= $invitee['email'] ?></td>
-                        <td class="text-right"><?= $this->batch($invitee['uploaded'],'format_bytes') ?></td>
-                        <td class="text-right"><?= $this->batch($invitee['downloaded'],'format_bytes') ?></td>
-                        <td class="text-center"><?= number_format($invitee['uploaded']/($invitee['downloaded'] + 1),3) ?></td>
+                        <td class="text-right"><?= $this->batch($invitee['uploaded'], 'format_bytes') ?></td>
+                        <td class="text-right"><?= $this->batch($invitee['downloaded'], 'format_bytes') ?></td>
+                        <td class="text-center"><?= number_format($invitee['uploaded']/($invitee['downloaded'] + 1), 3) ?></td>
                         <td class="text-center"><?= $invitee['status'] ?></td>
                         <?php if (app()->auth->getCurUser()->isPrivilege('invite_manual_confirm')): ?>
                         <td class="text-center">
-                            <?php if ($invitee['status'] == \App\Entity\User::STATUS_PENDING): ?>
+                            <?php if ($invitee['status'] == UserStatus::PENDING): ?>
                             <a class="btn btn-info btn-sm" href="?action=confirm&uid=<?= $this->e($invitee['id']) ?>" onclick="return confirm('Really?')">Confirm</a>
                             <?php endif ?>
                         </td>
@@ -106,7 +109,7 @@
             </div>
         </div> <!-- User's Pending Invite -->
 
-        <?php if ($user->getId() === app()->auth->getCurUser()->getId()): // Same User, use $user as quick call ?>
+        <?php if ($user->getId() === app()->auth->getCurUser()->getId()): // Same User, use $user as quick call?>
         <?php $can_invite = config('base.enable_invite_system') && ($user->getInvites() + $user->getTempInvitesSum() > 0); ?>
         <div class="panel">
             <div class="panel-heading"><span class="text-red">Invite Warning!!!</span></div>
@@ -139,10 +142,10 @@
                                     <?php $i = 1; ?>
                                     <?php foreach ($user->getTempInviteDetails() as $tempInviteDetail): ?>
                                         <?php $left = $tempInviteDetail['total'] - $tempInviteDetail['used']; ?>
-                                        <tr<?= strtotime($tempInviteDetail['expire_at']) - time() < 86400 ? ' class="warning"' : ''; ?>>
+                                        <tr <?= strtotime($tempInviteDetail['expire_at']) - time() < 86400 ? ' class="warning"' : ''; ?>>
                                             <td><?= $i ?></td>
                                             <td><?= $tempInviteDetail['total'] ?></td>
-                                            <td<?= $left < 2 ? ' class="text-danger"' : '' ?>><?= $left ?></td>
+                                            <td <?= $left < 2 ? ' class="text-danger"' : '' ?>><?= $left ?></td>
                                             <td><nobr><?= $tempInviteDetail['expire_at'] ?></nobr></td>
                                             <td><button class="btn btn-primary btn-sm invite-btn" type="button" data-type="temporarily" data-id="<?= $i ?>" data-temp-invite-id="<?= $tempInviteDetail['id'] ?>"<?= $left == 0 ? ' disabled': '' ?>>Use it!</button></td>
                                         </tr>

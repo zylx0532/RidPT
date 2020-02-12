@@ -8,20 +8,21 @@
 
 namespace App\Controllers;
 
-use App\Entity\User;
 use App\Models\Form\Auth;
+use App\Entity\User\UserStatus;
 
 use Rid\Http\Controller;
-
+use Symfony\Component\HttpFoundation\Request;
 
 class AuthController extends Controller
 {
 
+    /** @noinspection PhpUnused */
     public function actionRegister()
     {
-        if (app()->request->isPost()) {
+        if (app()->request->isMethod(Request::METHOD_POST)) {
             $register_form = new Auth\UserRegisterForm();
-            $register_form->setInput(app()->request->post());
+            $register_form->setInput(app()->request->request->all());
             $success = $register_form->validate();
             if (!$success) {
                 return $this->render('action/fail', [
@@ -31,8 +32,8 @@ class AuthController extends Controller
             } else {
                 $register_form->flush();  // Save this user in our database and do clean work~
 
-                if ($register_form->getStatus() == User::STATUS_CONFIRMED) {
-                    return app()->response->redirect('/index');
+                if ($register_form->getStatus() == UserStatus::CONFIRMED) {
+                    return app()->response->setRedirect('/index');
                 } else {
                     return $this->render('auth/register_pending', [
                         'confirm_way' => $register_form->getConfirmWay(),
@@ -45,10 +46,11 @@ class AuthController extends Controller
         }
     }
 
+    /** @noinspection PhpUnused */
     public function actionConfirm()
     {
         $confirm = new Auth\UserConfirmForm();
-        $confirm->setInput(app()->request->get());
+        $confirm->setInput(app()->request->query->all());
         $success = $confirm->validate();
         if (!$success) {
             return $this->render('action/fail', [
@@ -64,11 +66,12 @@ class AuthController extends Controller
         }
     }
 
+    /** @noinspection PhpUnused */
     public function actionRecover()
     {
-        if (app()->request->isPost()) {
+        if (app()->request->isMethod(Request::METHOD_POST)) {
             $form = new Auth\UserRecoverForm();
-            $form->setInput(app()->request->post());
+            $form->setInput(app()->request->request->all());
             $success = $form->validate();
             if (!$success) {
                 return $this->render('action/fail', [
@@ -96,7 +99,7 @@ class AuthController extends Controller
     {
         $render_data = [];
 
-        if (app()->request->isPost()) {
+        if (app()->request->isMethod(Request::METHOD_POST)) {
             $login = new Auth\UserLoginForm();
             if (false === $success = $login->validate()) {
                 $login->loginFail();
@@ -105,7 +108,7 @@ class AuthController extends Controller
                 $login->flush();
 
                 $return_to = app()->session->pop('login_return_to') ?? '/index';
-                return app()->response->redirect($return_to);
+                return app()->response->setRedirect($return_to);
             }
         }
 
@@ -123,6 +126,6 @@ class AuthController extends Controller
             $logout->flush();
         }
 
-        return app()->response->redirect('/auth/login');
+        return app()->response->setRedirect('/auth/login');
     }
 }

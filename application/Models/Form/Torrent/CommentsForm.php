@@ -8,7 +8,6 @@
 
 namespace App\Models\Form\Torrent;
 
-
 use Rid\Validators\PaginationTrait;
 
 class CommentsForm extends DetailsForm
@@ -38,7 +37,7 @@ class CommentsForm extends DetailsForm
 
     protected function getRemoteData(): array
     {
-        return app()->pdo->createCommand([
+        return app()->pdo->prepare([
             ['SELECT * FROM `torrent_comments` WHERE torrent_id = :tid', 'params' => ['tid' => $this->id]],
             ['LIMIT :offset, :limit', 'params' => ['offset' => $this->offset, 'limit' => $this->limit]]
         ])->queryAll();

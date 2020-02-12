@@ -1,15 +1,54 @@
 <a name="unreleased"></a>
 ## [Unreleased]
 
+### Build
+- **PHP:** bump PHP major version to min 7.4 (d5b1ff1)
+
+### Chore
+- **composer:** bump adhocore/cli (6647c9d)
+
 ### Docs
+- **README:** fix typo of start command (657c71a)
+- **Redis:** Fix phpdoc for Redis Component (70ac399)
 - **Sponsor:** Add Sponsor `MeiHeZi` (ae612e0)
+- **phpstorm:** Add `.phpstorm.meat.php` for config() function (407bb66)
 
 ### Feat
+- **Requests:** Make Response Component extends from `Symfony\Component\HttpFoundation\Response` (dd001d2)
+- **Requests:** Make Request Component extends from `Symfony\Component\HttpFoundation\Request` (9cd715b)
 - **Torrent:** Per-add torrent edit (f06b342)
 - **i18n:** Use symfony/translation and JSON format for locale (02cc251)
+- **layout:** Add anti-robots html meta tag (9c21e73)
+
+### Fix
+- **Bencode:** Fix dict keys may not in sorted order (81f0783)
+- **Config:** Fix JSON type config return False (1129008)
+- **Cron:** Fix components lost in CronTabProcess (1ced4bf)
+- **Redis:** Fix wrong type of Redis call function hMset() to hMSet() (a163150)
+- **Route:** Fix user can access maintenance page even not on maintenance status (b29c2f6)
+- **Tracker:** Fix typo in TrackerController (323c8ec)
+- **Tracker:** Disable `retry in` feature by default (4b1f767)
+- **User:** Fix all user class info become cur_user (77c7345)
+
+### Perf
+- **Component:** View Become a component to perf load time (660c1f1)
+- **Log:** Separate Site Log Level from component Site (d110c2b)
+- **Session_Log:** Use `insert with select` to log session (d786243)
+- **Tracker:** Reduce Redis Calls for get User and Torrent Info in Tracker (e813435)
+- **User:** Sort class User and create UserFactory (8fced36)
+- **User:** Add `Entity\User\AbstractUserInterface` (1d8e9e4)
+- **User:** Simple sql to get user real_transfer from table `snatched` (547c772)
 
 ### Refactor
+- **Database:** Rename function creatCommand() to prepare() (09f6701)
+- **Entity:** Separate Entity User, Torrent 's const to App\Repository (50ecdbf)
 - **Entity:** Move Class Torrent,User to namespace App\Entity (7814d88)
+- **Torrent:** Add TorrentFactory (e7dc26e)
+
+### Style
+- **Bencode:** Separate Bencode library to `Rhilip/Bencode` (18cbfa1)
+- **cs-fixer:** Update Composer config and php-cs-fixer whole project (e734812)
+- **gitignore:** Add .php_cs.cache to .gitignore (15a2a15)
 
 
 <a name="v0.1.6-alpha"></a>

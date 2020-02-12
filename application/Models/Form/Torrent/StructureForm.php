@@ -9,16 +9,15 @@
 namespace App\Models\Form\Torrent;
 
 use App\Libraries\Constant;
-use App\Libraries\Bencode\Bencode;
+
+use Rhilip\Bencode\Bencode;
 
 class StructureForm extends DetailsForm
 {
-
     public function getTorrentFileContentDict()
     {
         $file_loc = Constant::getTorrentFileLoc($this->id);
         $content = Bencode::load($file_loc);
         return $content;
     }
-
 }

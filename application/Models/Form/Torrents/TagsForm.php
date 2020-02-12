@@ -8,7 +8,6 @@
 
 namespace App\Models\Form\Torrents;
 
-
 use Rid\Validators\Pagination;
 
 class TagsForm extends Pagination
@@ -20,7 +19,7 @@ class TagsForm extends Pagination
     public function getRemoteTotal(): int
     {
         $search = $this->getInput('search');
-        return app()->pdo->createCommand([
+        return app()->pdo->prepare([
             ['SELECT COUNT(`id`) FROM tags '],
             ['WHERE `tag` LIKE :tag', 'if' => !empty($search), 'params' => ['tag' => '%' . $search . '%']],
         ])->queryScalar();
@@ -29,12 +28,11 @@ class TagsForm extends Pagination
     public function getRemoteData(): array
     {
         $search = $this->search;
-        return app()->pdo->createCommand([
+        return app()->pdo->prepare([
             ['SELECT * FROM tags '],
             ['WHERE `tag` LIKE :tag', 'if' => !empty($search), 'params' => ['tag' => '%' . $search . '%']],
             ['ORDER BY `pinned`, `count` DESC, `id` '],
             ['LIMIT :offset, :rows', 'params' => ['offset' => $this->offset, 'rows' => $this->limit]],
         ])->queryAll();
     }
-
 }

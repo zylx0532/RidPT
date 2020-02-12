@@ -33,36 +33,36 @@ $user = $details->getUser();
             </div>
             <div class="panel-body">
                 <dl class="dl-horizontal text-overflow">
-                    <dt>Registration Time</dt><dd><?= $details->getCreateAt() ?></dd>
-                    <dt>Last Login Time</dt><dd><?= $details->getLastLoginAt() ?></dd>
-                    <dt>Last Access Time</dt><dd><?= $details->getLastAccessAt() ?></dd>
-                    <?php if ($details->getLastUploadAt() > 0 or $details->getLastDownloadAt() or $details->getLastConnectAt() > 0): ?>
+                    <dt>Registration Time</dt><dd><?= $user->getCreateAt() ?></dd>
+                    <dt>Last Login Time</dt><dd><?= $user->getLastLoginAt() ?></dd>
+                    <dt>Last Access Time</dt><dd><?= $user->getLastAccessAt() ?></dd>
+                    <?php if ($user->getLastUploadAt() > 0 or $user->getLastDownloadAt() or $user->getLastConnectAt() > 0): ?>
                         <dt>Last Tracker Time</dt>
                         <dd>
-                            <?php if ($details->getLastUploadAt() > 0): ?> Upload: <?= $details->getLastUploadAt() ?> <br><?php endif;?>
-                            <?php if ($details->getLastDownloadAt() > 0): ?> Download: <?= $details->getLastDownloadAt() ?> <br><?php endif;?>
-                            <?php if ($details->getLastConnectAt() > 0): ?> Connect: <?= $details->getLastConnectAt() ?> <br><?php endif;?>
+                            <?php if ($user->getLastUploadAt() > 0): ?> Upload: <?= $user->getLastUploadAt() ?> <br><?php endif;?>
+                            <?php if ($user->getLastDownloadAt() > 0): ?> Download: <?= $user->getLastDownloadAt() ?> <br><?php endif;?>
+                            <?php if ($user->getLastConnectAt() > 0): ?> Connect: <?= $user->getLastConnectAt() ?> <br><?php endif;?>
                         </dd>
                     <?php endif; ?>
                 </dl>
                 <hr>
                 <dl class="dl-horizontal text-overflow">
-                    <?php if ($details->getRegisterIp()): ?><dt>Registration Ip</dt><dd><?= $details->getRegisterIp() ?></dd><?php endif;?>
-                    <?php if ($details->getLastLoginIp()): ?><dt>Last Login Ip</dt><dd><?= $details->getLastLoginIp() ?></dd><?php endif;?>
-                    <?php if ($details->getLastAccessIp()): ?><dt>Last Access Ip</dt><dd><?= $details->getLastAccessIp() ?></dd><?php endif;?>
-                    <?php if ($details->getLastTrackerIp()): ?><dt>Last Tracker Ip</dt><dd><?= $details->getLastTrackerIp() ?></dd><?php endif;?>
+                    <?php if ($user->getRegisterIp()): ?><dt>Registration Ip</dt><dd><?= $user->getRegisterIp() ?></dd><?php endif;?>
+                    <?php if ($user->getLastLoginIp()): ?><dt>Last Login Ip</dt><dd><?= $user->getLastLoginIp() ?></dd><?php endif;?>
+                    <?php if ($user->getLastAccessIp()): ?><dt>Last Access Ip</dt><dd><?= $user->getLastAccessIp() ?></dd><?php endif;?>
+                    <?php if ($user->getLastTrackerIp()): ?><dt>Last Tracker Ip</dt><dd><?= $user->getLastTrackerIp() ?></dd><?php endif;?>
                 </dl>
                 <hr>
                 <dl class="dl-horizontal text-overflow">
                     <dt>BT Transport</dt>
                     <dd>
-                        Ratio : <?= is_string($user->getRatio()) ? $user->getRatio() : round($user->getRatio(),3) ?>
-                        ( uploaded : <?= $this->e(app()->auth->getCurUser()->getUploaded(),'format_bytes') ?> and downloaded : <?= $this->e(app()->auth->getCurUser()->getDownloaded(),'format_bytes') ?>) <br>
-                        Real Ratio : <?= is_string($user->getRealRatio()) ? $user->getRealRatio() : round($user->getRealRatio(),3) ?>
-                        ( uploaded : <?= $this->e(app()->auth->getCurUser()->getRealUploaded(),'format_bytes') ?> and downloaded : <?= $this->e(app()->auth->getCurUser()->getRealDownloaded(),'format_bytes') ?>) <br>
+                        Ratio : <?= is_string($user->getRatio()) ? $user->getRatio() : round($user->getRatio(), 3) ?>
+                        ( uploaded : <?= $this->e(app()->auth->getCurUser()->getUploaded(), 'format_bytes') ?> and downloaded : <?= $this->e(app()->auth->getCurUser()->getDownloaded(), 'format_bytes') ?>) <br>
+                        Real Ratio : <?= is_string($user->getRealRatio()) ? $user->getRealRatio() : round($user->getRealRatio(), 3) ?>
+                        ( uploaded : <?= $this->e(app()->auth->getCurUser()->getRealUploaded(), 'format_bytes') ?> and downloaded : <?= $this->e(app()->auth->getCurUser()->getRealDownloaded(), 'format_bytes') ?>) <br>
                     </dd>
                     <dt>BT Time</dt>
-                    <dd>Ratio : <?= round($user->getTimeRatio(),2) ?>  ( Seeding Time: <?= $user->getSeedtime() ?> , Leeching Time: <?= $user->getLeechTime() ?>)</dd>
+                    <dd>Ratio : <?= round($user->getTimeRatio(), 2) ?>  ( Seeding Time: <?= $user->getSeedtime() ?> , Leeching Time: <?= $user->getLeechTime() ?>)</dd>
                 </dl>
             </div>
         </div>

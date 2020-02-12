@@ -9,11 +9,13 @@
 namespace App\Controllers;
 
 use App\Libraries\Constant;
-use App\Entity\User;
-use Rid\Utils\IpUtils;
-use App\Libraries\Bencode\Bencode;
-
+use App\Entity\User\UserRole;
 use App\Exceptions\TrackerException;
+
+use Rid\Utils\IpUtils;
+
+use Rhilip\Bencode\Bencode;
+use Symfony\Component\HttpFoundation\Request;
 
 /** @noinspection PhpUnused */
 class TrackerController
@@ -47,9 +49,9 @@ class TrackerController
     public function actionIndex()
     {
         // Set Response Header ( Format, HTTP Cache )
-        app()->response->setHeader('Content-Type', 'text/plain; charset=utf-8');
-        app()->response->setHeader('Connection', 'close');
-        app()->response->setHeader('Pragma', 'no-cache');
+        app()->response->headers->set('Content-Type', 'text/plain; charset=utf-8');
+        app()->response->headers->set('Connection', 'close');
+        app()->response->headers->set('Pragma', 'no-cache');
 
         $userInfo = null;
         $torrentInfo = null;
@@ -57,11 +59,13 @@ class TrackerController
 
         try {
             // Block NON-GET requests (Though non-GET request will not match this Route )
-            if (!app()->request->isGet())
-                throw new TrackerException(110, [':method' => app()->request->method()]);
+            if (!app()->request->isMethod(Request::METHOD_GET)) {
+                throw new TrackerException(110, [':method' => app()->request->getMethod()]);
+            }
 
-            if (!config('base.enable_tracker_system'))
+            if (!config('base.enable_tracker_system')) {
                 throw new TrackerException(100);
+            }
 
             $this->blockClient();
 
@@ -74,7 +78,9 @@ class TrackerController
                 // Tracker Protocol Extension: Scrape - http://www.bittorrent.org/beps/bep_0048.html
                 case 'scrape':
                     {
-                        if (!config('tracker.enable_scrape')) throw new TrackerException(101);
+                        if (!config('tracker.enable_scrape')) {
+                            throw new TrackerException(101);
+                        }
 
                         $this->checkScrapeFields($info_hash_array);
                         $this->generateScrapeResponse($info_hash_array, $rep_dict);
@@ -84,7 +90,9 @@ class TrackerController
 
                 case 'announce':
                     {
-                        if (!config('tracker.enable_announce')) throw new TrackerException(102);
+                        if (!config('tracker.enable_announce')) {
+                            throw new TrackerException(102);
+                        }
 
                         $this->checkAnnounceFields($queries);
 
@@ -120,8 +128,9 @@ class TrackerController
                              *
                              */
                             $role = ($queries['left'] == 0) ? 'yes' : 'no';
-                            if ($queries['event'] == 'paused')
+                            if ($queries['event'] == 'paused') {
                                 $role = 'partial';
+                            }
 
                             /** Check if user can open this session */
                             $this->checkSession($queries, $role, $userInfo, $torrentInfo);
@@ -145,27 +154,37 @@ class TrackerController
 
             return Bencode::encode([
                 'failure reason' => $e->getMessage(),
-                'retry in' => config('tracker.retry_interval')
+                'min interval' => (int) config('tracker.min_interval')
+                /**
+                 * BEP 31: Failure Retry Extension
+                 *
+                 * However most bittorrent client don't support it, so this feature is disabled default
+                 *  - libtorrent-rasterbar (e.g. qBittorrent, Deluge )
+                 *    This library will obey the `min interval` key if exist or it will retry in 60s (By default `min interval`)
+                 *  - libtransmission (e.g. Transmission )
+                 *    This library will ignore any other key if failed
+                 *
+                 * @see http://www.bittorrent.org/beps/bep_0031.html
+                 */
+                //'retry in' => config('tracker.retry_interval')
             ]);
         }
     }
 
     protected function logException(\Exception $exception, $userInfo = null, $torrentInfo = null)
     {
-        $req_info = app()->request->server('query_string') . "\n\n";
-        foreach (app()->request->header() as $key => $value) {
-            $req_info .= "$key : $value \n";
-        }
+        $req_info = app()->request->getQueryString() . "\n\n";
+        $req_info .= (string) app()->request->headers;
 
-        app()->pdo->createCommand('INSERT INTO `agent_deny_log`(`tid`, `uid`, `user_agent`, `peer_id`, `req_info`,`create_at`, `msg`) 
-                VALUES (:tid,:uid,:ua,:peer_id,:req_info,CURRENT_TIMESTAMP,:msg) 
+        app()->pdo->prepare('INSERT INTO `agent_deny_log`(`tid`, `uid`, `user_agent`, `peer_id`, `req_info`,`create_at`, `msg`)
+                VALUES (:tid,:uid,:ua,:peer_id,:req_info,CURRENT_TIMESTAMP,:msg)
                 ON DUPLICATE KEY UPDATE `user_agent` = VALUES(`user_agent`),`peer_id` = VALUES(`peer_id`),
-                                        `req_info` = VALUES(`req_info`),`msg` = VALUES(`msg`), 
+                                        `req_info` = VALUES(`req_info`),`msg` = VALUES(`msg`),
                                         `last_action_at` = NOW();')->bindParams([
             'tid' => $torrentInfo ? $torrentInfo['id'] : 0,
             'uid' => $userInfo ? $userInfo['id'] : 0,
-            'ua' => app()->request->header('user-agent', ''),
-            'peer_id' => app()->request->get('peer_id', ''),
+            'ua' => app()->request->headers->get('user-agent', ''),
+            'peer_id' => app()->request->query->get('peer_id', ''),
             'req_info' => $req_info,
             'msg' => $exception->getMessage()
         ])->execute();
@@ -177,12 +196,13 @@ class TrackerController
     private function blockClient()
     {
         // Miss Header User-Agent is not allowed.
-        if (!app()->request->header('user-agent'))
+        if (!app()->request->headers->get('user-agent')) {
             throw new TrackerException(120);
+        }
 
         // Block Other Browser, Crawler (, May Cheater or Faker Client) by check Requests headers
-        if (app()->request->header('accept-language') || app()->request->header('referer')
-            || app()->request->header('accept-charset')
+        if (app()->request->headers->get('accept-language') || app()->request->headers->get('referer')
+            || app()->request->headers->get('accept-charset')
 
             /**
              * This header check may block Non-bittorrent client `Aria2` to access tracker,
@@ -190,7 +210,7 @@ class TrackerController
              *
              * @see https://blog.rhilip.info/archives/1010/ ( in Chinese )
              */
-            || app()->request->header('want-digest')
+            || app()->request->headers->get('want-digest')
 
             /**
              * If your tracker is behind the Cloudflare or other CDN (proxy) Server,
@@ -206,18 +226,20 @@ class TrackerController
              * @see https://support.cloudflare.com/hc/en-us/articles/200170156
              *
              */
-            //|| app()->request->header('cookie')
-        )
+            //|| app()->request->headers->get('cookie')
+        ) {
             throw new TrackerException(122);
+        }
 
-        $ua = app()->request->header('user-agent');
+        $ua = app()->request->headers->get('user-agent');
 
         // Should also Block those too long User-Agent. ( For Database reason
-        if (strlen($ua) > 64)
+        if (strlen($ua) > 64) {
             throw new TrackerException(123);
+        }
 
         // Block Browser by check it's User-Agent
-        if (preg_match('/(Mozilla|Browser|Chrome|Safari|AppleWebKit|Opera|Links|Lynx|[Bb]ot)/', $ua)) {
+        if (preg_match('/(Mozilla|Browser|Chrome|Safari|AppleWebKit|Opera|Links|Lynx|Bot|Unknown)/i', $ua)) {
             throw new TrackerException(121);
         }
     }
@@ -229,17 +251,19 @@ class TrackerController
     private function checkUserAgent(bool $onlyCheckUA = false)
     {
         // Start Check Client by `User-Agent` and `peer_id`
-        $userAgent = app()->request->header('user-agent');
-        $peer_id = app()->request->get('peer_id', '');
+        $userAgent = app()->request->headers->get('user-agent');
+        $peer_id = app()->request->query->get('peer_id', '');
         $client_identity = $userAgent . ($onlyCheckUA ? '' : ':' . $peer_id);
 
         // if this user-agent and peer_id already checked valid or not ?
-        if (app()->redis->zScore(Constant::trackerValidClientZset, $client_identity) > 0) return;
+        if (app()->redis->zScore(Constant::trackerValidClientZset, $client_identity) > 0) {
+            return;
+        }
 
         // Get Client White List From Database and cache it
         if (false === $allowedFamily = app()->redis->get(Constant::trackerAllowedClientList)) {
-            $allowedFamily = app()->pdo->createCommand("SELECT * FROM `agent_allowed_family` WHERE `enabled` = 'yes' ORDER BY `hits` DESC")->queryAll();
-            app()->redis->set(Constant::trackerAllowedClientList, $allowedFamily,86400);
+            $allowedFamily = app()->pdo->prepare("SELECT * FROM `agent_allowed_family` WHERE `enabled` = 'yes' ORDER BY `hits` DESC")->queryAll();
+            app()->redis->set(Constant::trackerAllowedClientList, $allowedFamily, 86400);
         }
 
         $agentAccepted = null;
@@ -256,19 +280,16 @@ class TrackerController
 
             // Check User-Agent
             if ($allowedItem['agent_pattern'] != '') {
-                if (!preg_match($allowedItem['agent_pattern'], $allowedItem['agent_start'], $agentShould))
+                if (!preg_match($allowedItem['agent_pattern'], $allowedItem['agent_start'], $agentShould)) {
                     throw new TrackerException(124, [':pattern' => "User-Agent", ':start' => $allowedItem['start_name']]);
+                }
 
                 if (preg_match($allowedItem['agent_pattern'], $userAgent, $agentMatched)) {
                     if ($allowedItem['agent_match_num'] > 0) {
                         for ($i = 0; $i < $allowedItem['agent_match_num']; $i++) {
-                            if ($allowedItem['agent_matchtype'] == 'hex') {
-                                $agentMatched[$i + 1] = hexdec($agentMatched[$i + 1]);
-                                $agentShould[$i + 1] = hexdec($agentShould[$i + 1]);
-                            } else {
-                                $agentMatched[$i + 1] = intval($agentMatched[$i + 1]);
-                                $agentShould[$i + 1] = intval($agentShould[$i + 1]);
-                            }
+                            $conversion_func = $allowedItem['agent_matchtype'] == 'hex' ? 'hexdec' : 'intval';
+                            $agentMatched[$i + 1] = $conversion_func($agentMatched[$i + 1]);
+                            $agentShould[$i + 1] = $conversion_func($agentShould[$i + 1]);
 
                             // Compare agent version number from high to low
                             // The high version number is already greater than the requirement, Break,
@@ -277,8 +298,9 @@ class TrackerController
                                 break;
                             }
                             // Below requirement
-                            if ($agentMatched[$i + 1] < $agentShould[$i + 1])
+                            if ($agentMatched[$i + 1] < $agentShould[$i + 1]) {
                                 throw new TrackerException(125, [":start" => $allowedItem['start_name']]);
+                            }
                             // Continue to loop. Unless the last bit is equal.
                             if ($agentMatched[$i + 1] == $agentShould[$i + 1] && $i + 1 == $allowedItem['agent_match_num']) {
                                 $agentAccepted = true;
@@ -293,24 +315,26 @@ class TrackerController
             }
 
             if ($onlyCheckUA) {
-                if ($agentAccepted) break; else continue;
+                if ($agentAccepted) {
+                    break;
+                } else {
+                    continue;
+                }
             }
 
             // Check Peer_id
             if ($allowedItem['peer_id_pattern'] != '') {
-                if (!preg_match($allowedItem['peer_id_pattern'], $allowedItem['peer_id_start'], $peerIdShould))
+                if (!preg_match($allowedItem['peer_id_pattern'], $allowedItem['peer_id_start'], $peerIdShould)) {
                     throw new TrackerException(124, [':pattern' => 'peer_id', ':start' => $allowedItem['start_name']]);
+                }
 
                 if (preg_match($allowedItem['peer_id_pattern'], $peer_id, $peerIdMatched)) {
                     if ($allowedItem['peer_id_match_num'] > 0) {
                         for ($i = 0; $i < $allowedItem['peer_id_match_num']; $i++) {
-                            if ($allowedItem['peer_id_matchtype'] == 'hex') {
-                                $peerIdMatched[$i + 1] = hexdec($peerIdMatched[$i + 1]);
-                                $peerIdShould[$i + 1] = hexdec($peerIdShould[$i + 1]);
-                            } else {
-                                $peerIdMatched[$i + 1] = intval($peerIdMatched[$i + 1]);
-                                $peerIdShould[$i + 1] = intval($peerIdShould[$i + 1]);
-                            }
+                            $conversion_func = $allowedItem['peer_id_matchtype'] == 'hex' ? 'hexdec' : 'intval';
+                            $peerIdMatched[$i + 1] = $conversion_func($peerIdMatched[$i + 1]);
+                            $peerIdShould[$i + 1] = $conversion_func($peerIdShould[$i + 1]);
+
                             // Compare agent version number from high to low
                             // The high version number is already greater than the requirement, Break,
                             if ($peerIdMatched[$i + 1] > $peerIdShould[$i + 1]) {
@@ -318,8 +342,9 @@ class TrackerController
                                 break;
                             }
                             // Below requirement
-                            if ($peerIdMatched[$i + 1] < $peerIdShould[$i + 1])
+                            if ($peerIdMatched[$i + 1] < $peerIdShould[$i + 1]) {
                                 throw new TrackerException(114, [':start' => $allowedItem['start_name']]);
+                            }
                             // Continue to loop. Unless the last bit is equal.
                             if ($peerIdMatched[$i + 1] == $peerIdShould[$i + 1] && $i + 1 == $allowedItem['agent_match_num']) {
                                 $peerIdAccepted = true;
@@ -342,7 +367,9 @@ class TrackerController
         }
 
         if ($onlyCheckUA) {
-            if (!$agentAccepted) throw new TrackerException(126, [':ua' => $userAgent]);
+            if (!$agentAccepted) {
+                throw new TrackerException(126, [':ua' => $userAgent]);
+            }
             app()->redis->zAdd(Constant::trackerValidClientZset, time() + rand(7200, 18000), $client_identity);
             return;
         }
@@ -351,7 +378,7 @@ class TrackerController
             if ($acceptedAgentFamilyException) {
                 // Get Client Exception List From Database and cache it since we need to check it
                 if (false === $allowedFamilyException = app()->redis->get(Constant::trackerAllowedClientExceptionList)) {
-                    $allowedFamilyException = app()->pdo->createCommand('SELECT * FROM `agent_allowed_exception`')->queryAll();
+                    $allowedFamilyException = app()->pdo->prepare('SELECT * FROM `agent_allowed_exception`')->queryAll();
                     app()->redis->set(Constant::trackerAllowedClientExceptionList, $allowedFamilyException, 86400);
                 }
 
@@ -360,8 +387,9 @@ class TrackerController
                     if ($exceptionItem['family_id'] == $acceptedAgentFamilyId
                         && preg_match($exceptionItem['peer_id'], $peer_id)
                         && ($userAgent == $exceptionItem['agent'] || !$exceptionItem['agent'])
-                    )
+                    ) {
                         throw new TrackerException(127, [':ua' => $userAgent, ':comment' => $exceptionItem['comment']]);
+                    }
                 }
                 app()->redis->zAdd(Constant::trackerValidClientZset, time() + rand(7200, 18000), $client_identity);
                 // app()->redis->rawCommand('bf.add', [Constant::trackerValidClientZset, $client_identity]);
@@ -377,31 +405,26 @@ class TrackerController
      */
     private function checkPasskey(&$userInfo)
     {
-        $passkey = app()->request->get('passkey');
+        $passkey = app()->request->query->get('passkey');
 
         // First Check The param `passkey` is exist and valid
-        if (is_null($passkey))
+        if (is_null($passkey)) {
             throw new TrackerException(130, [':attribute' => 'passkey']);
-        if (strlen($passkey) != 32)
+        }
+        if (strlen($passkey) != 32) {
             throw new TrackerException(132, [':attribute' => 'passkey', ':rule' => 32]);
-        if (strspn(strtolower($passkey), 'abcdef0123456789') != 32)
+        }
+        if (strspn(strtolower($passkey), 'abcdef0123456789') != 32) {  // MD5 char limit
             throw new TrackerException(131, [':attribute' => 'passkey', ':reason' => 'The format of passkey isn\'t correct']);
-
-        // If this passkey is exist in Invalid Passkey Zset. (Worked as `Filter`
-        if (app()->redis->zScore(Constant::mapUserPasskeyToId, $passkey) === (double) 0)
-            throw new TrackerException(140);
+        }
 
         // Get userInfo from RedisConnection Cache and then Database
-        $userInfo = app()->redis->get(Constant::trackerUserContentByPasskey($passkey));
-        if ($userInfo === false) {  // If Cache is not exist , We will get User info from Database
-            $userInfo = app()->pdo->createCommand('SELECT `id`, `status`, `passkey`, `downloadpos`, `class`, `uploaded`, `downloaded` FROM `users` WHERE `passkey` = :passkey LIMIT 1')
-                ->bindParams(['passkey' => $passkey])->queryOne();
-            if ($userInfo === false) {  // It means this passkey is invalid , so we remember it
-                app()->redis->zAdd(Constant::mapUserPasskeyToId, 0, $passkey);
-                throw new TrackerException(140);
-            }
+        if (false === $userInfo = app()->redis->get(Constant::userBaseContentByPasskey($passkey))) {
+            $userInfo = app()->pdo->prepare('SELECT `id`, `status`, `passkey`, `downloadpos`, `class`, `uploaded`, `downloaded` FROM `users` WHERE `passkey` = :passkey LIMIT 1')
+                ->bindParams(['passkey' => $passkey])->queryOne() ?: [];
 
-            app()->redis->set(Constant::trackerUserContentByPasskey($passkey), $userInfo, 3600 + rand(0, 30));
+            // Notice: We log empty array in Redis Cache if userInfo not find in our Database
+            app()->redis->set(Constant::userBaseContentByPasskey($passkey), $userInfo, 3600 + rand(0, 300));
         }
 
         /**
@@ -411,8 +434,15 @@ class TrackerController
          *  - The user's status is not `confirmed`
          *  - The user's download Permission is disabled.
          */
-        if ($userInfo['status'] != 'confirmed') throw new TrackerException(141, [':status' => $userInfo['status']]);
-        if ($userInfo['downloadpos'] == 'no') throw new TrackerException(142);
+        if (empty($userInfo)) {
+            throw new TrackerException(140);
+        }
+        if ($userInfo['status'] != 'confirmed') {
+            throw new TrackerException(141, [':status' => $userInfo['status']]);
+        }
+        if ($userInfo['downloadpos'] == 'no') {
+            throw new TrackerException(142);
+        }
     }
 
     /**
@@ -425,28 +455,25 @@ class TrackerController
     {
         $bin2hex_hash = bin2hex($hash);
 
-        // If this torrent info_hash is exist in invalid set. (Worked as `Bloom Filter`
-        if (app()->redis->zScore(Constant::trackerInvalidInfoHashZset, $bin2hex_hash) !== false) return false;
-
-        $cache_key = Constant::trackerTorrentContentByInfoHash($bin2hex_hash);
-        $field = $scrape ? ['incomplete', 'complete', 'downloaded'] :
-            ['id', 'info_hash', 'owner_id', 'status', 'incomplete', 'complete', 'added_at'];
-
-        $exist = app()->redis->exists($cache_key);
-        if ($exist === 0) {  // This cache key is not exist , get it's information from db and then cache it
-            $torrentInfo = app()->pdo->createCommand('SELECT `id`, `info_hash`, `owner_id`, `status`, `incomplete`, `complete`, `downloaded`, `added_at` FROM `torrents` WHERE `info_hash` = :info LIMIT 1')
+        // If Cache is not exist , We will get User info from Database
+        if (false === $torrentInfo = app()->redis->get(Constant::trackerTorrentContentByInfoHash($bin2hex_hash))) {
+            $torrentInfo = app()->pdo->prepare('SELECT `id`, `info_hash`, `owner_id`, `status`, `incomplete`, `complete`, `downloaded`, `added_at` FROM `torrents` WHERE `info_hash` = :info LIMIT 1')
                 ->bindParams(['info' => $hash])->queryOne();
             if ($torrentInfo === false || $torrentInfo['status'] == 'deleted') {  // No-exist or deleted torrent
-                app()->redis->zAdd(Constant::trackerInvalidInfoHashZset, time() + 600, $bin2hex_hash);
-                return false;
+                $torrentInfo = [];
             }
 
-            app()->redis->hMset($cache_key, $torrentInfo);
-            app()->redis->expire($cache_key, 600 + rand(0, 30));
-            return $scrape ? array_intersect_key($torrentInfo, array_flip($field)) : $torrentInfo;
+            // Notice: We log empty array in Redis Cache if torrentInfo not find in our Database or in deleted status
+            app()->redis->set(Constant::trackerTorrentContentByInfoHash($bin2hex_hash), $torrentInfo, 600 + rand(0, 50));
         }
 
-        return app()->redis->hMGet($cache_key, $field);
+        // Return false when this info_hash is invalid (Not exist in our database or this status is 'deleted'
+        if (empty($torrentInfo)) {
+            return false;
+        }
+
+        // Return limit field when in scrape model
+        return $scrape ? array_intersect_key($torrentInfo, array_flip(['incomplete', 'complete', 'downloaded'])) : $torrentInfo;
     }
 
     /**
@@ -455,15 +482,16 @@ class TrackerController
      */
     private function checkScrapeFields(&$info_hash_array)
     {
-        preg_match_all('/info_hash=([^&]*)/i', urldecode(app()->request->server('query_string')), $info_hash_match);
+        preg_match_all('/info_hash=([^&]*)/i', urldecode(app()->request->getQueryString()), $info_hash_match);
 
         $info_hash_array = $info_hash_match[1];
         if (count($info_hash_array) < 1) {
             throw new TrackerException(130, [':attribute' => 'info_hash']);
         } else {
             foreach ($info_hash_array as $item) {
-                if (strlen($item) != 20)
+                if (strlen($item) != 20) {
                     throw new TrackerException(133, [':attribute' => 'info_hash', ':rule' => 20]);
+                }
             }
         }
     }
@@ -473,7 +501,9 @@ class TrackerController
         $torrent_details = [];
         foreach ($info_hash_array as $item) {
             $metadata = $this->getTorrentInfoByHash($item, true);
-            if ($metadata !== false) $torrent_details[$item] = $metadata;  // Append it to tmp array only it exist.
+            if ($metadata !== false) {
+                $torrent_details[$item] = $metadata;
+            }  // Append it to tmp array only it exist.
         }
 
         $rep_dict = ['files' => $torrent_details];
@@ -488,7 +518,7 @@ class TrackerController
         // Part.1 check Announce **Need** Fields
         // Notice: param `passkey` is not require in BEP , but is required in our private torrent tracker system
         foreach (['info_hash', 'peer_id', 'port', 'uploaded', 'downloaded', 'left', 'passkey'] as $item) {
-            $item_data = app()->request->get($item);
+            $item_data = app()->request->query->get($item);
             if (!is_null($item_data)) {
                 $queries[$item] = $item_data;
             } else {
@@ -497,14 +527,16 @@ class TrackerController
         }
 
         foreach (['info_hash', 'peer_id'] as $item) {
-            if (strlen($queries[$item]) != 20)
+            if (strlen($queries[$item]) != 20) {
                 throw new TrackerException(133, [':attribute' => $item, ':rule' => 20]);
+            }
         }
 
         foreach (['uploaded', 'downloaded', 'left'] as $item) {
             $item_data = $queries[$item];
-            if (!is_numeric($item_data) || $item_data < 0)
+            if (!is_numeric($item_data) || $item_data < 0) {
                 throw new TrackerException(134, [':attribute' => $item]);
+            }
         }
 
         // Part.2 check Announce **Option** Fields
@@ -513,18 +545,20 @@ class TrackerController
                      'numwant' => 50, 'corrupt' => 0, 'key' => '',
                      'ip' => '', 'ipv4' => '', 'ipv6' => '',
                  ] as $item => $value) {
-            $queries[$item] = app()->request->get($item, $value);
+            $queries[$item] = app()->request->query->get($item, $value);
         }
 
         foreach (['numwant', 'corrupt', 'no_peer_id', 'compact'] as $item) {
-            if (!is_numeric($queries[$item]) || $queries[$item] < 0)
+            if (!is_numeric($queries[$item]) || $queries[$item] < 0) {
                 throw new TrackerException(134, [":attribute" => $item]);
+            }
         }
 
-        if (!in_array(strtolower($queries['event']), ['started', 'completed', 'stopped', 'paused', '']))
+        if (!in_array(strtolower($queries['event']), ['started', 'completed', 'stopped', 'paused', ''])) {
             throw new TrackerException(136, [":event" => strtolower($queries['event'])]);
+        }
 
-        $queries['user-agent'] = app()->request->header('user-agent');
+        $queries['user-agent'] = app()->request->headers->get('user-agent');
 
         // Part.3 check Announce *IP* Fields
         /**
@@ -573,7 +607,9 @@ class TrackerController
             } elseif (IpUtils::isValidIPv6($remote_ip)) {
                 $queries['ipv6'] = $remote_ip;
             }
-            if ($queries['ipv6']) $queries['ipv6_port'] = $queries['port'];
+            if ($queries['ipv6']) {
+                $queries['ipv6_port'] = $queries['port'];
+            }
         }
 
         // Clean $queries['ip'] field and then store ipv4 data in it to make sure this field is IPv4-Only
@@ -600,10 +636,12 @@ class TrackerController
 
         // Part.4 check Port Fields is Valid and Allowed
         $this->checkPortFields($queries['port']);
-        if (isset($queries['ipv6_port']) && $queries['port'] != $queries['ipv6_port'])
+        if (isset($queries['ipv6_port']) && $queries['port'] != $queries['ipv6_port']) {
             $this->checkPortFields($queries['ipv6_port']);
-        if ($queries['port'] == 0 && strtolower($queries['event']) != 'stopped')
+        }
+        if ($queries['port'] == 0 && strtolower($queries['event']) != 'stopped') {
             throw new TrackerException(137, [":event" => strtolower($queries['event'])]);
+        }
     }
 
     /** Check Port
@@ -615,8 +653,9 @@ class TrackerController
      */
     private function checkPortFields($port)
     {
-        if (!is_numeric($port) || $port < 0 || $port > 0xffff || in_array($port, self::portBlacklist))
+        if (!is_numeric($port) || $port < 0 || $port > 0xffff || in_array($port, self::portBlacklist)) {
             throw new TrackerException(135, [':port' => $port]);
+        }
     }
 
     /**
@@ -628,30 +667,34 @@ class TrackerController
     private function getTorrentInfo($queries, $userInfo, &$torrentInfo)
     {
         $torrentInfo = $this->getTorrentInfoByHash($queries['info_hash']);
-        if ($torrentInfo === false) throw new TrackerException(150);
+        if ($torrentInfo === false) {
+            throw new TrackerException(150);
+        }
 
         switch ($torrentInfo['status']) {
-            case 'confirmed' :
+            case 'confirmed':
                 return; // Do nothing , just break torrent status check when it is a confirmed torrent
-            case 'pending' :
-                {
-                    // For Pending torrent , we just allow it's owner and other user who's class great than your config set to connect
-                    if ($torrentInfo['owner_id'] != $userInfo['id']
-                        || $userInfo['class'] < config('authority.see_pending_torrent'))
-                        throw new TrackerException(151, [':status' => $torrentInfo['status']]);
-                    break;
+            case 'pending':
+            {
+                // For Pending torrent , we just allow it's owner and other user who's class great than your config set to connect
+                if ($torrentInfo['owner_id'] != $userInfo['id']
+                    || $userInfo['class'] < config('authority.see_pending_torrent')) {
+                    throw new TrackerException(151, [':status' => $torrentInfo['status']]);
                 }
-            case 'banned' :
-                {
-                    // For Banned Torrent , we just allow the user who's class great than your config set to connect
-                    if ($userInfo['class'] < config('authority.see_banned_torrent'))
-                        throw new TrackerException(151, [':status' => $torrentInfo['status']]);
-                    break;
+                break;
+            }
+            case 'banned':
+            {
+                // For Banned Torrent , we just allow the user who's class great than your config set to connect
+                if ($userInfo['class'] < config('authority.see_banned_torrent')) {
+                    throw new TrackerException(151, [':status' => $torrentInfo['status']]);
                 }
+                break;
+            }
             default:
-                {
-                    throw new TrackerException(152, [':status' => $torrentInfo['status']]);
-                }
+            {
+                throw new TrackerException(152, [':status' => $torrentInfo['status']]);
+            }
         }
     }
 
@@ -662,13 +705,13 @@ class TrackerController
      * When our tracker receive the first announce request,
      * This function will hit a 60s lock in Redis zset based on request uri,
      * And if another same request hit the lock,
-     * We should pass the main announce check and just return the empty peer_list
+     * We should pass the main announce check and just return the empty peer_list in other announce request
      *
      * @return float|bool
      */
     private function lockAnnounceDuration()
     {
-        $identity = md5(urldecode(app()->request->server('query_string')));
+        $identity = md5(urldecode(app()->request->getQueryString()));
         if (false == $check = app()->redis->zScore(Constant::trackerAnnounceLockZset, $identity)) {  // this identity is not lock
             app()->redis->zAdd(Constant::trackerAnnounceLockZset, time() + 60, $identity);
         }
@@ -677,19 +720,24 @@ class TrackerController
 
     /**
      * @param $queries
-     * @return float
      * @throws TrackerException
      */
     private function checkMinInterval($queries)
     {
-        $identity = bin2hex($queries['info_hash']) . ':' . $queries['passkey'] . ':' . $queries['peer_id'];
-        if (false == $check = app()->redis->zScore(Constant::trackerAnnounceMinIntervalLockZset, $identity)) {
-            $min_interval = intval(config('tracker.min_interval') * (3 / 4));
-            app()->redis->zAdd(Constant::trackerAnnounceMinIntervalLockZset, time() + $min_interval, $identity);
-        } else {
+        $identity = md5(implode(':', [
+            // Use `passkey, info_hash, peer_id` as a unique key to check if this announce is in min interval
+            $queries['passkey'], $queries['info_hash'], $queries['peer_id'],
+            // We should also add `event` params to prevent peer completed announce been blocked after common announce
+            $queries['event']
+        ]));
+
+        $prev_lock_expire = app()->redis->zScore(Constant::trackerAnnounceMinIntervalLockZset, $identity) ?: $this->timenow;
+        if ($prev_lock_expire > $this->timenow) {
             throw new TrackerException(162, [':min' => config('tracker.min_interval')]);
         }
-        return $check;
+
+        $min_interval = intval(config('tracker.min_interval') * (3 / 4));
+        app()->redis->zAdd(Constant::trackerAnnounceMinIntervalLockZset, $this->timenow + $min_interval, $identity);
     }
 
     /**
@@ -702,7 +750,7 @@ class TrackerController
     private function checkSession($queries, $seeder, $userInfo, $torrentInfo)
     {
         // Check if exist peer or not
-        $identity = $torrentInfo['id'] . ':' . $userInfo["id"] . ':' . $queries['peer_id'];
+        $identity = implode(':', [$torrentInfo['id'], $userInfo['id'], $queries['peer_id']]);
         if (app()->redis->zScore(Constant::trackerValidPeerZset, $identity)) {
             // this peer is already announce before , just expire cache key lifetime and return.
             app()->redis->zIncrBy(Constant::trackerValidPeerZset, config('tracker.interval') * 2, $identity);
@@ -711,7 +759,7 @@ class TrackerController
             // If session is not exist and &event!=stopped, a new session should start
 
             // Cache may miss
-            $self = app()->pdo->createCommand('SELECT COUNT(`id`) FROM `peers` WHERE `user_id`=:uid AND `torrent_id`=:tid AND `peer_id`=:pid;')->bindParams([
+            $self = app()->pdo->prepare('SELECT COUNT(`id`) FROM `peers` WHERE `user_id`=:uid AND `torrent_id`=:tid AND `peer_id`=:pid;')->bindParams([
                 'uid' => $userInfo['id'], 'tid' => $torrentInfo['id'], 'pid' => $queries['peer_id']
             ])->queryScalar();
             if ($self !== 0) {  // True MISS
@@ -720,36 +768,45 @@ class TrackerController
             }
 
             // First check if this peer can open this NEW session then create it
-            $selfCount = app()->pdo->createCommand('SELECT COUNT(*) AS `count` FROM `peers` WHERE `user_id` = :uid AND `torrent_id` = :tid;')->bindParams([
+            $selfCount = app()->pdo->prepare('SELECT COUNT(*) AS `count` FROM `peers` WHERE `user_id` = :uid AND `torrent_id` = :tid;')->bindParams([
                 'uid' => $userInfo['id'],
                 'tid' => $torrentInfo['id']
             ])->queryScalar();
 
             // Ban one torrent seeding/leech at multi-location due to your site config
             if ($seeder == 'yes') { // if this peer's role is seeder
-                if ($selfCount >= (config('tracker.user_max_seed')))
+                if ($selfCount >= (config('tracker.user_max_seed'))) {
                     throw new TrackerException(160, [':count' => config('tracker.user_max_seed')]);
+                }
             } else {
-                if ($selfCount >= (config('tracker.user_max_leech')))
+                if ($selfCount >= (config('tracker.user_max_leech'))) {
                     throw new TrackerException(161, [':count' => config('tracker.user_max_leech')]);
+                }
             }
 
-            if ($userInfo['class'] < User::ROLE_VIP) {
+            if ($userInfo['class'] < UserRole::VIP) {
                 $ratio = (($userInfo['downloaded'] > 0) ? ($userInfo['uploaded'] / $userInfo['downloaded']) : 1);
                 $gigs = $userInfo['downloaded'] / (1024 * 1024 * 1024);
 
                 // Wait System
                 if (config('tracker.enable_waitsystem')) {
                     if ($gigs > 10) {
-                        if ($ratio < 0.4) $wait = 24;
-                        elseif ($ratio < 0.5) $wait = 12;
-                        elseif ($ratio < 0.6) $wait = 6;
-                        elseif ($ratio < 0.8) $wait = 3;
-                        else $wait = 0;
+                        if ($ratio < 0.4) {
+                            $wait = 24;
+                        } elseif ($ratio < 0.5) {
+                            $wait = 12;
+                        } elseif ($ratio < 0.6) {
+                            $wait = 6;
+                        } elseif ($ratio < 0.8) {
+                            $wait = 3;
+                        } else {
+                            $wait = 0;
+                        }
 
                         $elapsed = time() - $torrentInfo['added_at'];
-                        if ($elapsed < $wait)
+                        if ($elapsed < $wait) {
                             throw new TrackerException(163, [':sec' => $wait * 3600 - $elapsed]);
+                        }
                     }
                 }
 
@@ -757,17 +814,23 @@ class TrackerController
                 if (config('tracker.enable_maxdlsystem')) {
                     $max = 0;
                     if ($gigs > 10) {
-                        if ($ratio < 0.5) $max = 1;
-                        elseif ($ratio < 0.65) $max = 2;
-                        elseif ($ratio < 0.8) $max = 3;
-                        elseif ($ratio < 0.95) $max = 4;
+                        if ($ratio < 0.5) {
+                            $max = 1;
+                        } elseif ($ratio < 0.65) {
+                            $max = 2;
+                        } elseif ($ratio < 0.8) {
+                            $max = 3;
+                        } elseif ($ratio < 0.95) {
+                            $max = 4;
+                        }
                     }
                     if ($max > 0) {
-                        $count = app()->pdo->createCommand("SELECT COUNT(`id`) FROM `peers` WHERE `user_id` = :uid AND `seeder` = 'no';")->bindParams([
+                        $count = app()->pdo->prepare("SELECT COUNT(`id`) FROM `peers` WHERE `user_id` = :uid AND `seeder` = 'no';")->bindParams([
                             'uid' => $userInfo['id']
                         ])->queryScalar();
-                        if ($count >= $max)
+                        if ($count >= $max) {
                             throw new TrackerException(164, [':max' => $max]);
+                        }
                     }
                 }
             }
@@ -775,13 +838,12 @@ class TrackerController
             // All Check Passed
             app()->redis->zAdd(Constant::trackerValidPeerZset, $this->timenow + config('tracker.interval') * 2, $identity);
         }
-
     }
 
     private function sendToTaskWorker($queries, $role, $userInfo, $torrentInfo)
     {
         /**
-         * Push to Redis Queue and quick response
+         * Push to Redis Queue so we can quick response
          *
          * Don't use json_{encode,decode} for the value of info_hash and peer_id will make
          * those function return FALSE
@@ -800,60 +862,66 @@ class TrackerController
         $rep_dict = [
             'interval' => (int) config('tracker.interval') + rand(5, 20),   // random interval to avoid BOOM
             'min interval' => (int) config('tracker.min_interval') + rand(1, 10),
-            'complete' => $torrentInfo['complete'],
-            'incomplete' => $torrentInfo['incomplete'],
+            'complete' => (int) $torrentInfo['complete'],
+            'incomplete' => (int) $torrentInfo['incomplete'],
             'peers' => []  // By default it is a array object, only when `&compact=1` then it should be a string
         ];
 
-        // For `stopped` event , we didn't send peers list any more~
+        // For `stopped` event Or if peer's role not set (In AnnounceDuration lock)
+        // We didn't send peers list any more, Just quick return without peer query in database~
         if ($queries['event'] == 'stopped' || $role == '') {
             return;
         }
 
+        // Fix rep_dict format based on params `&compact=`, `&np_peer_id=`, `&numwant=` and our tracker config
         $compact = (bool) ($queries['compact'] == 1 || config('tracker.force_compact_model'));
         if ($compact) {
             $queries['no_peer_id'] = 1;  // force `no_peer_id` when `compact` mode is enable
             $rep_dict['peers'] = '';  // Change `peers` from array to string
-            if ($queries['ipv6'])   // If peer has IPv6 address , we should add packed string in `peers6`
+            if ($queries['ipv6']) {   // If peer has IPv6 address , we should add packed string in `peers6`
                 $rep_dict['peers6'] = '';
+            }
         }
 
         $no_peer_id = (bool) ($queries['no_peer_id'] == 1 || config('tracker.force_no_peer_id_model'));
-        $limit = ($queries['numwant'] <= config('tracker.max_numwant')) ? $queries['numwant'] : config('tracker.max_numwant');
+        $limit = (int) ($queries['numwant'] <= config('tracker.max_numwant')) ? $queries['numwant'] : config('tracker.max_numwant');
 
-        $peers = app()->pdo->createCommand([
+        // Query Peers in database
+        $peers = app()->pdo->prepare([
             ['SELECT `port`, `ipv6_port` '],
             // Get ip and ipv6 field in binary or string depend on value of $compact
             [', `ip`, `ipv6` ', 'if' => $compact],
-            [', INET6_NTOA(`ip`) as `ip`, INET6_NTOA(`ipv6`) as `ipv6` ', 'ip' => !$compact],
+            [', INET6_NTOA(`ip`) as `ip`, INET6_NTOA(`ipv6`) as `ipv6` ', 'if' => !$compact],
             [', `peer_id` ', 'if' => !$no_peer_id],
             ['FROM `peers` WHERE torrent_id = :tid ', 'params' => ['tid' => $torrentInfo['id']]],
             ['AND peer_id != :pid  ', 'params' => ['pid' => $queries['peer_id']]],  // Don't select user himself
-            ['AND `seeder` = \'no\' ', 'if' => $role != 'no'],  // Don't report seeders to other seeders
-            ['ORDER BY RAND() LIMIT :limit', 'params' => ['limit' => $limit]]
+            ['AND `seeder` = \'no\' ', 'if' => $role != 'no'],  // Don't report seeders to other seeders (include partial seeders)
+            ['ORDER BY RAND() LIMIT :limit', 'params' => ['limit' => $limit]]  // Random select so that everyone will return
         ])->queryAll();
 
         foreach ($peers as $peer) {
             $exchange_peer = [];
 
-            if (!$no_peer_id) $exchange_peer['peer_id'] = $peer['peer_id'];
+            if (!$no_peer_id) {
+                $exchange_peer['peer_id'] = $peer['peer_id'];
+            }
 
             if ($queries['ip'] && $peer['ip']) {
                 if ($compact) {
                     // $peerList .= pack("Nn", sprintf("%d",ip2long($peer["ip"])), $peer['port']);
-                    $rep_dict['peers'] .= inet_pton($peer['ip']) . pack('n', $peer['port']);
+                    $rep_dict['peers'] .= $peer['ip'] . pack('n', $peer['port']);
                 } else {
                     $exchange_peer['ip'] = $peer['ip'];
-                    $exchange_peer["port"] = $peer['port'];
+                    $exchange_peer['port'] = $peer['port'];
                     $rep_dict['peers'][] = $exchange_peer;
                 }
             }
 
             if ($queries['ipv6'] && $peer['ipv6']) {
                 if ($compact) {
-                    $rep_dict['peers6'] .= inet_pton($peer['ipv6']) . pack('n', $peer['ipv6_port']);
+                    $rep_dict['peers6'] .= $peer['ipv6'] . pack('n', $peer['ipv6_port']);
                 } else {
-                    // If peer don't want compact response, we return ipv6-peer in `peers`
+                    // If peer don't want compact response, return ipv6-peer in `peers`
                     $exchange_peer['ip'] = $peer['ipv6'];
                     $exchange_peer['port'] = $peer['ipv6_port'];
                     $rep_dict['peers'][] = $exchange_peer;

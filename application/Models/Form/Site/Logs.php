@@ -8,12 +8,10 @@
 
 namespace App\Models\Form\Site;
 
-
 use Rid\Validators\Pagination;
 
 class Logs extends Pagination
 {
-
     protected $_levels;
 
     public static $MAX_LIMIT = 100;
@@ -33,8 +31,12 @@ class Logs extends Pagination
     public static function inputRules(): array
     {
         $level_list = ['all', 'normal'];
-        if (app()->auth->getCurUser()->isPrivilege('see_site_log_mod')) $level_list[] = 'mod';
-        if (app()->auth->getCurUser()->isPrivilege('see_site_log_leader')) $level_list[] = 'leader';
+        if (app()->auth->getCurUser()->isPrivilege('see_site_log_mod')) {
+            $level_list[] = 'mod';
+        }
+        if (app()->auth->getCurUser()->isPrivilege('see_site_log_leader')) {
+            $level_list[] = 'leader';
+        }
 
         return [
             'page' => 'Integer', 'limit' => 'Integer',
@@ -45,14 +47,21 @@ class Logs extends Pagination
         ];
     }
 
-    private function getLevels() {
-        if (!is_null($this->_levels)) return $this->_levels;
+    private function getLevels()
+    {
+        if (!is_null($this->_levels)) {
+            return $this->_levels;
+        }
 
         $input_level = $this->getInput('level');
         if ($input_level == 'all') {
             $levels = ['normal'];
-            if (app()->auth->getCurUser()->isPrivilege('see_site_log_mod')) $levels[] = 'mod';
-            if (app()->auth->getCurUser()->isPrivilege('see_site_log_leader')) $levels[] = 'leader';
+            if (app()->auth->getCurUser()->isPrivilege('see_site_log_mod')) {
+                $levels[] = 'mod';
+            }
+            if (app()->auth->getCurUser()->isPrivilege('see_site_log_leader')) {
+                $levels[] = 'leader';
+            }
         } else {
             $levels = [$input_level];
         }
@@ -64,7 +73,7 @@ class Logs extends Pagination
     protected function getRemoteTotal(): int
     {
         $search = $this->getInput('query');
-        return app()->pdo->createCommand([
+        return app()->pdo->prepare([
             ['SELECT COUNT(*) FROM `site_log` WHERE 1=1 '],
             ['AND `level` IN (:l) ', 'params' => ['l' => $this->getLevels()]],
             ['AND `msg` LIKE :search ', 'if' => strlen($search), 'params' => ['search' => "%$search%"]]
@@ -74,7 +83,7 @@ class Logs extends Pagination
     protected function getRemoteData(): array
     {
         $search = $this->getInput('query');
-        return app()->pdo->createCommand([
+        return app()->pdo->prepare([
             ['SELECT * FROM `site_log` WHERE 1=1 '],
             ['AND `level` IN (:l) ', 'params' => ['l' => $this->getLevels()]],
             ['AND `msg` LIKE :search ', 'if' => strlen($search), 'params' => ['search' => "%$search%"]],

@@ -8,11 +8,11 @@
 
 namespace App\Models\Form\Torrent;
 
-
 use App\Libraries\Constant;
 use App\Models\Form\Traits\isValidTorrentTrait;
-use App\Entity\Torrent;
+use App\Entity\Torrent\Torrent;
 
+use App\Entity\Torrent\TorrentStatus;
 use Rid\Http\UploadFile;
 use Rid\Validators\Validator;
 
@@ -55,9 +55,11 @@ class EditForm extends Validator
             'title' => 'required',
             'category' => [
                 ['required'], ['Integer'],
-                ['InList', ['list' => array_map(function ($cat) {
+                ['InList', ['list' => array_map(
+                    function ($cat) {
                         return $cat['id'];
-                    }, app()->site->ruleCanUsedCategory()
+                    },
+                    app()->site->ruleCanUsedCategory()
                 )]]
             ],
             'descr' => 'required',
@@ -129,7 +131,7 @@ class EditForm extends Validator
             ];
 
             // Nfo file upload
-            if (app()->request->post('nfo_action', 'keep') == 'update') {
+            if (app()->request->request->get('nfo_action', 'keep') == 'update') {
                 $rules['nfo'] = [
                     ['Upload\Extension', ['allowed' => ['nfo', 'txt']]],
                     ['Upload\Size', ['size' => config('upload.max_nfo_file_size') . 'B']]
@@ -140,7 +142,7 @@ class EditForm extends Validator
         if (app()->auth->getCurUser()->isPrivilege('manage_torrents')) {
             $rules['status'] = [
                 ['required'],
-                ['InList', ['list' => Torrent::TORRENT_STATUSES]]
+                ['InList', ['list' => TorrentStatus::TORRENT_STATUSES]]
             ];
         }
 
@@ -157,7 +159,8 @@ class EditForm extends Validator
         // Get Torrent if not in validate
         if ($this->torrent === null) {
             $this->isExistTorrent();
-            if ($this->getError()) { return false;
+            if ($this->getError()) {
+                return false;
             }
         }
 
@@ -177,8 +180,8 @@ class EditForm extends Validator
     {
         $this->rewriteFlags();
         $tags = $this->getTags();
-        app()->pdo->createCommand('
-            UPDATE `torrents` SET title = :title, subtitle = :subtitle, 
+        app()->pdo->prepare('
+            UPDATE `torrents` SET title = :title, subtitle = :subtitle,
                       category = :category, team = :team, quality_audio = :audio, quality_codec = :codec,
                       quality_medium = :medium, quality_resolution = :resolution,
                       descr = :descr, tags =  JSON_ARRAY(:tags), nfo=:nfo,uplver = :uplver, hr = :hr
@@ -244,10 +247,9 @@ class EditForm extends Validator
     protected function updateTagsTable(array $tags)
     {
         foreach ($tags as $tag) {
-            app()->pdo->createCommand('INSERT INTO tags (tag) VALUES (:tag) ON DUPLICATE KEY UPDATE `count` = `count` + 1;')->bindParams([
+            app()->pdo->prepare('INSERT INTO tags (tag) VALUES (:tag) ON DUPLICATE KEY UPDATE `count` = `count` + 1;')->bindParams([
                 'tag' => $tag
             ])->execute();
         }
     }
-
 }

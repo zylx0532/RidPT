@@ -34,4 +34,10 @@ trait StaticInstanceTrait
         return $object;
     }
 
+    protected function importAttributes($config)
+    {
+        foreach ($config as $name => $value) {
+            $this->$name = $value;
+        }
+    }
 }

@@ -22,12 +22,13 @@ $extend_debug_info = app()->auth->getCurUser()  // Not Anonymous
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
     <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
     <meta name="referrer" content="same-origin" />
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
 
-    <meta name="author" content="<?= config('base.site_author') ?>">
-    <meta name="generator" content="<?= config('base.site_generator') ?>">
-    <meta name="keywords" content="<?= config('base.site_keywords') ?>">
-    <meta name="description" content="<?= config('base.site_description') ?>">
-    <meta name="copyright" content="<?= config('base.site_copyright') ?>">
+    <meta name="author" content="<?= $this->e(config('base.site_author')) ?>">
+    <meta name="generator" content="<?= $this->e(config('base.site_generator')) ?>">
+    <meta name="keywords" content="<?= $this->e(config('base.site_keywords')) ?>">
+    <meta name="description" content="<?= $this->e(config('base.site_description')) ?>">
+    <meta name="copyright" content="<?= $this->e(config('base.site_copyright')) ?>">
 
     <script type="text/javascript">const _head_start = new Date();</script>
 
@@ -88,7 +89,7 @@ $extend_debug_info = app()->auth->getCurUser()  // Not Anonymous
             </p>
             <p class="debug-info">
                 [ Page created in <b><?= number_format(microtime(true) - app()->request->start_at, 6) ?></b> sec
-                with <b><?= $this->e(memory_get_usage(),'format_bytes') ?></b> ram used,
+                with <b><?= $this->e(memory_get_usage(), 'format_bytes') ?></b> ram used,
                 <b><?= count(app()->pdo->getExecuteData()) ?></b> db queries,
                 <b><?= array_sum(app()->redis->getCalledData())?></b> calls of Redis ]
                 <?php if ($extend_debug_info): ?>

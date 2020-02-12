@@ -8,10 +8,10 @@
 
 namespace App\Models\Form\Traits;
 
+use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 
 trait FileSentTrait
 {
-
     use actionRateLimitCheckTrait;
 
     protected function getSendFileName(): string
@@ -36,22 +36,24 @@ trait FileSentTrait
 
     final private function setRespHeaders()
     {
+        if ('application/octet-stream' !== $fileContentType = $this->getSendFileContentType()) {
+            app()->response->headers->set('Content-Type', $fileContentType);
+        }
+
+        if (0 !== $fileSize = $this->getSendFileContentLength()) {
+            app()->response->headers->set('Content-Length', $fileSize);
+        }
+
         if ($this->getSendFileCacheControlStatus()) {
-            app()->response->setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-            app()->response->setHeader('Pragma', 'no-cache');
-            app()->response->setHeader('Expires', '0');
+            app()->response->headers->set('Cache-Control', 'no-cache, no-store, must-revalidate');
+            app()->response->headers->set('Pragma', 'no-cache');
+            app()->response->headers->set('Expires', '0');
         }
 
-        app()->response->setHeader('Content-Type', $this->getSendFileContentType());
-        if ($this->getSendFileContentLength() != 0)
-            app()->response->setHeader('Content-Length', $this->getSendFileContentLength());
-
-        $filename = $this->getSendFileName();
-        if (strpos(app()->request->header('user-agent'), 'IE')) {
-            app()->response->setHeader('Content-Disposition', 'attachment; filename=' . str_replace('+', '%20', rawurlencode($filename)));
-        } else {
-            app()->response->setHeader('Content-Disposition', "attachment; filename=\"$filename\" ; charset=utf-8");
-        }
+        app()->response->setContentDisposition(
+            ResponseHeaderBag::DISPOSITION_ATTACHMENT,
+            $this->getSendFileName()
+        );
     }
 
     abstract protected function getSendFileContent();

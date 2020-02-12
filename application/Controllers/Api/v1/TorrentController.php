@@ -12,10 +12,11 @@ use App\Models\Api\v1\Form\TorrentsForm;
 
 class TorrentController extends ApiController
 {
-    public function actionBookmark() {
+    public function actionBookmark()
+    {
         if ($this->checkMethod('POST')) {
             $bookmark = new TorrentsForm();
-            $bookmark->setInput(app()->request->post());
+            $bookmark->setInput(app()->request->request->all());
             $success = $bookmark->validate();
             if (!$success) {
                 return [
@@ -34,10 +35,11 @@ class TorrentController extends ApiController
         }
     }
 
-    public function actionFileList() {
+    public function actionFileList()
+    {
         if ($this->checkMethod('GET')) {
             $filelist = new TorrentsForm();
-            $filelist->setInput(app()->request->get());
+            $filelist->setInput(app()->request->query->all());
             $success = $filelist->validate();
             if (!$success) {
                 return [
@@ -51,7 +53,6 @@ class TorrentController extends ApiController
                     $ret
                 );
             }
-
         } else {
             return $this->buildMethodFailMsg('GET');
         }
@@ -61,7 +62,7 @@ class TorrentController extends ApiController
     {
         if ($this->checkMethod('GET')) {
             $filelist = new TorrentsForm();
-            $filelist->setInput(app()->request->get());
+            $filelist->setInput(app()->request->query->all());
             $success = $filelist->validate();
             if (!$success) {
                 return [
@@ -75,6 +76,8 @@ class TorrentController extends ApiController
                     $ret
                 );
             }
+        } else {
+            return $this->buildMethodFailMsg('GET');
         }
     }
 }

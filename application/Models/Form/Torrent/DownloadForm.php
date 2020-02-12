@@ -9,7 +9,8 @@
 namespace App\Models\Form\Torrent;
 
 use App\Models\Form\Traits\FileSentTrait;
-use App\Libraries\Bencode\Bencode;
+
+use Rhilip\Bencode\Bencode;
 
 class DownloadForm extends StructureForm
 {
@@ -27,7 +28,7 @@ class DownloadForm extends StructureForm
 
     protected function getSendFileName(): string
     {
-        return '[' . config('base.site_name') . ']' . $this->torrent->getTorrentName() . '.torrent';
+        return '[' . config('base.site_name') . '].' . $this->torrent->getTorrentName() . '.torrent';
     }
 
     protected function getRateLimitRules(): array
@@ -39,8 +40,9 @@ class DownloadForm extends StructureForm
 
     protected function checkDownloadPos()
     {
-        if (!app()->auth->getCurUser()->getDownloadpos())
-            $this->buildCallbackFailMsg('pos','your download pos is disabled');
+        if (!app()->auth->getCurUser()->getDownloadpos()) {
+            $this->buildCallbackFailMsg('pos', 'your download pos is disabled');
+        }
     }
 
     public function getSendFileContent()
@@ -48,12 +50,11 @@ class DownloadForm extends StructureForm
         $dict = $this->getTorrentFileContentDict();
 
         $scheme = 'http://';
-        if (filter_var($this->https, FILTER_VALIDATE_BOOLEAN))
+        if (isset($this->https)) {
+            $scheme = filter_var($this->https, FILTER_VALIDATE_BOOLEAN) ? 'https://' : 'http://';
+        } elseif (app()->request->isSecure()) {
             $scheme = 'https://';
-        else if (filter_var($this->https, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE))
-            $scheme = 'http://';
-        else if (app()->request->isSecure())
-            $scheme = 'https://';
+        }
 
         $announce_suffix = '/announce?passkey=' . app()->auth->getCurUser()->getPasskey();
         $dict['announce'] = $scheme . config('base.site_tracker_url') . $announce_suffix;
@@ -63,10 +64,10 @@ class DownloadForm extends StructureForm
          * @see https://web.archive.org/web/20190724110959/https://blog.rhilip.info/archives/1108/
          *      which discuss about multitracker behaviour on common bittorrent client ( Chinese Version )
          */
-        if ($multi_trackers = config('base.site_multi_tracker_url')) {
+        $multi_trackers_list = config('base.site_multi_tracker_url');
+        if (!empty($multi_trackers)) {
             // Add our main tracker into multi_tracker_list to avoid lost....
-            $multi_trackers = config('base.site_tracker_url') . ',' . $multi_trackers;
-            $multi_trackers_list = explode(',', $multi_trackers);
+            array_unshift($multi_trackers_list, config('base.site_tracker_url'));
             $multi_trackers_list = array_unique($multi_trackers_list);  // use array_unique to remove dupe tracker
 
             $dict["announce-list"] = [];

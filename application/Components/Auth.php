@@ -10,6 +10,7 @@ namespace App\Components;
 
 use App\Entity;
 use App\Libraries\Constant;
+use App\Entity\User\UserStatus;
 
 use Rid\Base\Component;
 use Rid\Helpers\JWTHelper;
@@ -37,7 +38,7 @@ class Auth extends Component
     /**
      * @param string $grant
      * @param string|bool $flush
-     * @return Entity\User|bool return False means this user is anonymous
+     * @return Entity\User\User|bool return False means this user is anonymous
      */
     public function getCurUser($grant = 'cookies', $flush = false)
     {
@@ -60,19 +61,23 @@ class Auth extends Component
 
     /**
      * @param string $grant
-     * @return Entity\User|boolean
+     * @return Entity\User\User|boolean
      */
     protected function loadCurUser($grant = 'cookies')
     {
         $user_id = false;
-        if ($grant == 'cookies') $user_id = $this->loadCurUserIdFromCookies();
-        elseif ($grant == 'passkey') $user_id = $this->loadCurUserIdFromPasskey();
+        if ($grant == 'cookies') {
+            $user_id = $this->loadCurUserIdFromCookies();
+        } elseif ($grant == 'passkey') {
+            $user_id = $this->loadCurUserIdFromPasskey();
+        }
 
         if ($user_id !== false && is_int($user_id) && $user_id > 0) {
             $user_id = intval($user_id);
             $curuser = app()->site->getUser($user_id);
-            if ($curuser->getStatus() !== Entity\User::STATUS_DISABLED)  // user status shouldn't be disabled
+            if ($curuser->getStatus() !== UserStatus::DISABLED) {  // user status shouldn't be disabled
                 return $curuser;
+            }
         }
 
         return false;
@@ -80,39 +85,46 @@ class Auth extends Component
 
     protected function loadCurUserIdFromCookies()
     {
-        $user_session = app()->request->cookie(Constant::cookie_name);
-        if (is_null($user_session)) return false;  // quick return when cookies is not exist
+        $user_session = app()->request->cookies->get(Constant::cookie_name);
+        // quick return when cookies is not exist
+        if (is_null($user_session)) {
+            return false;
+        }
 
-        $payload = JWTHelper::decode($user_session);
-        if ($payload === false) return false;
-        if (!isset($payload['jti']) || !isset($payload['aud'])) return false;
+        // quick return when decode JWT session failed
+        if (false === $payload = JWTHelper::decode($user_session)) {
+            return false;
+        }
+        if (!isset($payload['jti']) || !isset($payload['aud'])) {
+            return false;
+        }
 
         // Check if user lock access ip ?
         if (isset($payload['ip'])) {
             $now_ip_crc = sprintf('%08x', crc32(app()->request->getClientIp()));
-            if (strcasecmp($payload['ip'], $now_ip_crc) !== 0) return false;
+            if (strcasecmp($payload['ip'], $now_ip_crc) !== 0) {
+                return false;
+            }
         }
 
-        // Verity $jti is force expired or not by checking mapUserSessionToId
-        $expired_check = app()->redis->zScore(Constant::mapUserSessionToId, $payload['jti']);
-        if ($expired_check === false) {  // session is not see in Zset Cache (may lost or first time init), load from database ( Lazy load... )
-            $uid = app()->pdo->createCommand('SELECT `uid` FROM sessions WHERE session = :sid AND `expired` != 1 LIMIT 1')->bindParams([
-                'sid' => $payload['jti']
-            ])->queryScalar();
-            app()->redis->zAdd(Constant::mapUserSessionToId, $uid ?: 0, $payload['jti']);  // Store 0 if session -> uid is invalid
-            if ($uid === false) return false;  // this session is not exist or marked as expired
-        } elseif ($expired_check != $payload['aud']) return false;    // may return (double) 0 , which means already make invalid ; or it check if user obtain this session (may Overdesign)
+        // Verity $payload['jti'] is force expired or not, And check if it same with $payload['aud']
+        // And if not match, it means user logout this session or change password....
+        $uid = app()->site->getUserFactory()->getUserIdBySession($payload['jti']);
+        if ($uid != $payload['aud']) {
+            return false;
+        }
 
         $this->cur_user_jit = $payload['jti'];
 
         // Check if user want secure access but his environment is not secure
         if (!app()->request->isSecure() &&                        // if User requests is not secure , and
-            (config('security.ssl_login') > 1 ||        // if Our site FORCE enabled ssl feature
+            (
+                config('security.ssl_login') > 1 ||        // if Our site FORCE enabled ssl feature
              (config('security.ssl_login') > 0 && isset($payload['ssl']) && $payload['ssl']) // if Our site support ssl feature and User want secure access
             )
         ) {
-            app()->response->redirect(str_replace('http://', 'https://', app()->request->fullUrl()));
-            app()->response->setHeader('Strict-Transport-Security', 'max-age=1296000; includeSubDomains');
+            app()->response->setRedirect(str_replace('http://', 'https://', app()->request->getUri()));
+            app()->response->headers->set('Strict-Transport-Security', 'max-age=1296000; includeSubDomains');
         }
 
         return $payload['aud'];
@@ -120,17 +132,12 @@ class Auth extends Component
 
     protected function loadCurUserIdFromPasskey()
     {
-        $passkey = app()->request->get('passkey');
-        if (is_null($passkey)) return false;
-
-        $user_id = app()->redis->zScore(Constant::mapUserPasskeyToId, $passkey);
-        if (false === $user_id) {
-            $user_id = app()->pdo->createCommand('SELECT `id` FROM `users` WHERE `passkey` = :passkey LIMIT 1;')->bindParams([
-                'passkey' => $passkey
-            ])->queryScalar() ?: 0;
-            app()->redis->zAdd(Constant::mapUserPasskeyToId, $user_id, $passkey);
+        $passkey = app()->request->query->get('passkey');
+        if (is_null($passkey)) {
+            return false;
         }
 
+        $user_id = app()->site->getUserFactory()->getUserIdByPasskey($passkey);
         return $user_id > 0 ? $user_id : false;
     }
 
@@ -139,7 +146,7 @@ class Auth extends Component
         if (!is_null($this->cur_user_jit)) {
             $uid = $this->getCurUser()->getId();
             $now_ip = app()->request->getClientIp();
-            $ua = app()->request->header('user-agent');
+            $ua = app()->request->headers->get('user-agent');
 
             $identify_key = md5(implode('|', [
                 $this->cur_user_jit,  // `sessions`->session
@@ -152,16 +159,13 @@ class Auth extends Component
             $check = app()->redis->pfAdd('Site:hyperloglog:access_log_' . $grain_size, [$identify_key]);
             if ($check == 1) {
                 // Update Table `users`
-                app()->pdo->createCommand('UPDATE `users` SET last_access_at = NOW(), last_access_ip = INET6_ATON(:ip) WHERE id = :id;')->bindParams([
+                app()->pdo->prepare('UPDATE `users` SET last_access_at = NOW(), last_access_ip = INET6_ATON(:ip) WHERE id = :id;')->bindParams([
                     'ip' => $now_ip, 'id' => $uid
                 ])->execute();
 
                 // Insert Table `session_log`
-                $sid = app()->pdo->createCommand('SELECT `id` FROM `sessions` WHERE `session` = :jit')->bindParams([
-                    'jit' => $this->cur_user_jit
-                ])->queryScalar();
-                app()->pdo->createCommand('INSERT INTO `session_log` (`sid`, `access_at`, `access_ip`, `user_agent`) VALUES (:sid, NOW(), INET6_ATON(:access_ip), :ua)')->bindParams([
-                    'sid' => $sid, 'access_ip' => $now_ip, 'ua' => $ua
+                app()->pdo->prepare('INSERT INTO `session_log` (`sid`, `access_at`, `access_ip`, `user_agent`) VALUES ((SELECT `id` FROM `sessions` WHERE `session` = :jit), NOW(), INET6_ATON(:access_ip), :ua)')->bindParams([
+                    'jit' => $this->cur_user_jit, 'access_ip' => $now_ip, 'ua' => $ua
                 ])->execute();
             }
         }

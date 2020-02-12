@@ -9,7 +9,9 @@
 namespace App\Models\Form\Auth;
 
 use App\Libraries\Constant;
-use App\Entity\User;
+use App\Entity\User\UserRole;
+use App\Entity\User\UserStatus;
+use App\Entity\Site\LogLevel;
 
 use Rid\Helpers\StringHelper;
 use Rid\Validators\Validator;
@@ -92,8 +94,8 @@ class UserRegisterForm extends Validator
 
     public function buildDefaultPropAfterValid()
     {
-        $this->status = config('register.user_default_status') ?? User::STATUS_PENDING;
-        $this->class = config('register.user_default_class') ?? User::ROLE_USER;
+        $this->status = config('register.user_default_status') ?? UserStatus::PENDING;
+        $this->class = config('register.user_default_class') ?? UserRole::USER;
         $this->uploadpos = config('register.user_default_uploadpos') ?? 1;
         $this->downloadpos = config('register.user_default_downloadpos') ?? 1;
         $this->uploaded = config('register.user_default_uploaded') ?? 1;
@@ -123,12 +125,12 @@ class UserRegisterForm extends Validator
     protected function isRegisterSystemOpen()
     {
         if (config('base.enable_register_system') != true) {
-            $this->buildCallbackFailMsg('RegisterSystemOpen','The register isn\'t open in this site.');
+            $this->buildCallbackFailMsg('RegisterSystemOpen', 'The register isn\'t open in this site.');
             return;
         }
 
         if (config('register.by_' . $this->getInput('type')) != true) {
-            $this->buildCallbackFailMsg('RegisterSystemOpen',"The register by {$this->getInput('type')} ways isn't open in this site.");
+            $this->buildCallbackFailMsg('RegisterSystemOpen', "The register by {$this->getInput('type')} ways isn't open in this site.");
             return;
         }
     }
@@ -136,8 +138,9 @@ class UserRegisterForm extends Validator
     protected function isMaxUserReached()
     {
         if (config('register.check_max_user') &&
-            app()->site::fetchUserCount() >= config('base.max_user'))
-            $this->buildCallbackFailMsg('MaxUserReached','Max user limit Reached');
+            app()->site::fetchUserCount() >= config('base.max_user')) {
+            $this->buildCallbackFailMsg('MaxUserReached', 'Max user limit Reached');
+        }
     }
 
     protected function isMaxRegisterIpReached()
@@ -146,12 +149,12 @@ class UserRegisterForm extends Validator
             $client_ip = app()->request->getClientIp();
 
             $max_user_per_ip = config('register.per_ip_user') ?: 5;
-            $user_ip_count = app()->pdo->createCommand('SELECT COUNT(`id`) FROM `users` WHERE `register_ip` = INET6_ATON(:ip)')->bindParams([
+            $user_ip_count = app()->pdo->prepare('SELECT COUNT(`id`) FROM `users` WHERE `register_ip` = INET6_ATON(:ip)')->bindParams([
                 "ip" => $client_ip
             ])->queryScalar();
 
             if ($user_ip_count > $max_user_per_ip) {
-                $this->buildCallbackFailMsg('MaxRegisterIpReached',"The register member count in this ip `$client_ip` is reached");
+                $this->buildCallbackFailMsg('MaxRegisterIpReached', "The register member count in this ip `$client_ip` is reached");
             }
         }
     }
@@ -173,7 +176,7 @@ class UserRegisterForm extends Validator
         }
 
         // Check this username is exist in Table `users` or not
-        $count = app()->pdo->createCommand('SELECT COUNT(`id`) FROM `users` WHERE `username` = :username')->bindParams([
+        $count = app()->pdo->prepare('SELECT COUNT(`id`) FROM `users` WHERE `username` = :username')->bindParams([
             'username' => $username
         ])->queryScalar();
         if ($count > 0) {
@@ -186,22 +189,17 @@ class UserRegisterForm extends Validator
     {
         $email = $this->getInput('email');
         $email_suffix = substr($email, strpos($email, '@'));  // Will get `@test.com` as example
+
         if (config('register.check_email_blacklist') &&
-            config('register.email_black_list')) {
-            $email_black_list = explode(',', config('register.email_black_list'));
-            if (in_array($email_suffix, $email_black_list)) {
-                $this->buildCallbackFailMsg('ValidEmail', "The email suffix `$email_suffix` is not allowed.");
-                return;
-            }
+            in_array($email_suffix, config('register.email_black_list'))) {
+            $this->buildCallbackFailMsg('ValidEmail', "The email suffix `$email_suffix` is not allowed.");
+            return;
         }
 
         if (config('register.check_email_whitelist') &&
-            config('register.email_white_list')) {
-            $email_white_list = explode(',', config('register.email_white_list'));
-            if (!in_array($email_suffix, $email_white_list)) {
-                $this->buildCallbackFailMsg('ValidEmail', "The email suffix `$email_suffix` is not allowed.");
-                return;
-            }
+            !in_array($email_suffix, config('register.email_white_list'))) {
+            $this->buildCallbackFailMsg('ValidEmail', "The email suffix `$email_suffix` is not allowed.");
+            return;
         }
 
         // Check $email is in blacklist or not
@@ -210,7 +208,7 @@ class UserRegisterForm extends Validator
             return;
         }
 
-        $email_check = app()->pdo->createCommand('SELECT COUNT(`id`) FROM `users` WHERE `email` = :email')->bindParams([
+        $email_check = app()->pdo->prepare('SELECT COUNT(`id`) FROM `users` WHERE `email` = :email')->bindParams([
             "email" => $email
         ])->queryScalar();
         if ($email_check > 0) {
@@ -228,7 +226,7 @@ class UserRegisterForm extends Validator
                 $this->buildCallbackFailMsg('Invite', "This invite hash : `$invite_hash` is not valid");
                 return;
             } else {
-                $inviteInfo = app()->pdo->createCommand('SELECT * FROM `invite` WHERE `hash`=:invite_hash AND `used` = 0 AND `expire_at` > NOW() LIMIT 1;')->bindParams([
+                $inviteInfo = app()->pdo->prepare('SELECT * FROM `invite` WHERE `hash`=:invite_hash AND `used` = 0 AND `expire_at` > NOW() LIMIT 1;')->bindParams([
                     'invite_hash' => $invite_hash
                 ])->queryOne();
                 if (false === $inviteInfo) {
@@ -271,18 +269,18 @@ class UserRegisterForm extends Validator
          * and can access the (super)admin panel to change site config .
          */
         if (app()->site::fetchUserCount() == 0) {
-            $this->status = User::STATUS_CONFIRMED;
-            $this->class = User::ROLE_STAFFLEADER;
+            $this->status = UserStatus::CONFIRMED;
+            $this->class = UserRole::STAFFLEADER;
             $this->confirm_way = 'auto';
         }
 
         // User status should be confirmed if site confirm_way is auto
-        if ($this->confirm_way == 'auto' and $this->status != User::STATUS_CONFIRMED) {
-            $this->status = User::STATUS_CONFIRMED;
+        if ($this->confirm_way == 'auto' and $this->status != UserStatus::CONFIRMED) {
+            $this->status = UserStatus::CONFIRMED;
         }
 
         // Insert into `users` table and get insert id
-        app()->pdo->createCommand("INSERT INTO `users` (`username`, `password`, `email`, `status`, `class`, `passkey`, `invite_by`, `create_at`, `register_ip`, `uploadpos`, `downloadpos`, `uploaded`, `downloaded`, `seedtime`, `leechtime`, `bonus_other`,`invites`) 
+        app()->pdo->prepare("INSERT INTO `users` (`username`, `password`, `email`, `status`, `class`, `passkey`, `invite_by`, `create_at`, `register_ip`, `uploadpos`, `downloadpos`, `uploaded`, `downloaded`, `seedtime`, `leechtime`, `bonus_other`,`invites`)
                                  VALUES (:name, :passhash, :email, :status, :class, :passkey, :invite_by, CURRENT_TIMESTAMP, INET6_ATON(:ip), :uploadpos, :downloadpos, :uploaded, :downloaded, :seedtime, :leechtime, :bonus, :invites)")->bindParams(array(
             'name' => $this->username, 'passhash' => password_hash($this->password, PASSWORD_DEFAULT), 'email' => $this->email,
             'status' => $this->status, 'class' => $this->class, 'passkey' => $this->passkey,
@@ -300,11 +298,11 @@ class UserRegisterForm extends Validator
 
         // Send Invite Success PM to invitee
         if ($this->type == 'invite') {
-            app()->pdo->createCommand("UPDATE `invite` SET `used` = 1 WHERE `hash` = :invite_hash")->bindParams([
+            app()->pdo->prepare("UPDATE `invite` SET `used` = 1 WHERE `hash` = :invite_hash")->bindParams([
                 "invite_hash" => $this->invite_hash,
             ])->execute();
 
-            $invitee = new User($this->invite_by);
+            $invitee = app()->site->getUser($this->invite_by);
             $log_text .= '(Invite by ' . $invitee->getUsername() . '(' . $invitee->getId() . ')).';
 
             app()->site->sendPM(0, $this->invite_by, 'New Invitee Signup Successful', "New Invitee Signup Successful");
@@ -313,22 +311,26 @@ class UserRegisterForm extends Validator
         // Send Confirm Email
         if ($this->confirm_way == 'email') {
             $confirm_key = StringHelper::getRandomString(32);
-            app()->pdo->createCommand('INSERT INTO `user_confirm` (`uid`,`secret`,`create_at`,`action`) VALUES (:uid,:secret,CURRENT_TIMESTAMP,:action)')->bindParams([
+            app()->pdo->prepare('INSERT INTO `user_confirm` (`uid`,`secret`,`create_at`,`action`) VALUES (:uid,:secret,CURRENT_TIMESTAMP,:action)')->bindParams([
                 'uid' => $this->id, 'secret' => $confirm_key, 'action' => $this->_action
             ])->execute();
-            $confirm_url = app()->request->root() . '/auth/confirm?' . http_build_query([
+            $confirm_url = app()->request->getSchemeAndHttpHost() . '/auth/confirm?' . http_build_query([
                     'secret' => $confirm_key,
                     'action' => $this->_action
                 ]);
 
-            app()->site->sendEmail([$this->email], 'Please confirm your accent',
-                'email/user_register', [
+            app()->site->sendEmail(
+                [$this->email],
+                'Please confirm your accent',
+                'email/user_register',
+                [
                     'username' => $this->username,
                     'confirm_url' => $confirm_url,
-                ]);
+                ]
+            );
         }
 
         // Add Site log for user signup
-       app()->site->writeLog($log_text, app()->site::LOG_LEVEL_MOD);
+        app()->site->writeLog($log_text, LogLevel::LOG_LEVEL_MOD);
     }
 }

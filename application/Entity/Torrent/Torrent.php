@@ -6,86 +6,59 @@
  * Time: 10:10
  */
 
-namespace App\Entity;
+namespace App\Entity\Torrent;
 
+use App\Entity\User\User;
 use App\Libraries\Constant;
 
 use Rid\Utils;
-use Rid\Exceptions\NotFoundException;
+use Rid\Base\BaseObject;
 
-class Torrent
+class Torrent extends BaseObject
 {
-    use Utils\AttributesImportUtils;
     use Utils\ClassValueCacheUtils;
 
-    private $id = null;
+    //-- Torrent Base Info --//
+    protected int $id;
+    protected int $owner_id;
+    protected string $info_hash;
+    protected string $status = TorrentStatus::PENDING;
+    protected string $added_at;
 
-    private $owner_id;
-    private $info_hash;
+    protected int $complete = 0;
+    protected int $incomplete = 0;
+    protected int $downloaded = 0;
+    protected int $comments = 0;
 
-    private $status;
+    protected string $title = '';
+    protected string $subtitle = '';
+    protected int $category = 0;
+    protected string $descr = '';
+    protected bool $uplver = false;
+    protected bool $hr = false;
+    protected $tags;
 
-    private $added_at;
+    protected int $team = 0;
+    protected int $quality_audio = 0;
+    protected int $quality_codec = 0;
+    protected int $quality_medium = 0;
+    protected int $quality_resolution = 0;
 
-    private $complete;
-    private $incomplete;
-    private $downloaded;
-    private $comments;
+    protected int $torrent_size;
 
-    private $title;
-    private $subtitle;
-    private $category;
-    private $descr;
-    private $uplver;
-    private $hr;
+    //-- Torrent Extend Info --//
+    protected string $torrent_name;
+    protected string $torrent_type;
+    protected ?string $nfo;
+    protected ?string $torrent_structure;
 
-    private $nfo;
-
-    private $tags;
-    private $pinned_tags;
-
-    private $torrent_name;
-    private $torrent_type;
-    private $torrent_size;
-    private $torrent_structure;
-
-    private $team;
 
     protected $comment_perpage = 10;  // FIXME
 
-    const TORRENT_TYPE_SINGLE = 'single';
-    const TORRENT_TYPE_MULTI = 'multi';
-
-    const TORRENT_STATUSES = [
-        self::TORRENT_STATUS_CONFIRMED,
-        self::TORRENT_STATUS_PENDING,
-        self::TORRENT_STATUS_BANNED,
-    ];
-
-    const TORRENT_STATUS_DELETED = 'deleted';
-    const TORRENT_STATUS_BANNED = 'banned';
-    const TORRENT_STATUS_PENDING = 'pending';
-    const TORRENT_STATUS_CONFIRMED = 'confirmed';
-
-    public function __construct($id = null)
+    /** @noinspection PhpMissingParentConstructorInspection */
+    public function __construct($config)
     {
-        $this->loadTorrentContentById($id);
-        if ($this->id == null) {
-            throw new NotFoundException('Not Found');  // FIXME
-        }
-    }
-
-    public function loadTorrentContentById($id)
-    {
-        $self = app()->redis->hGetAll(Constant::torrentContent($id));
-        if (empty($self)) {
-            $self = app()->pdo->createCommand("SELECT * FROM `torrents` WHERE id=:id LIMIT 1;")->bindParams([
-                    "id" => $id
-                ])->queryOne() ?? [];
-            app()->redis->hMset(Constant::torrentContent($id), $self);
-            app()->redis->expire(Constant::torrentContent($id), 1800);
-        }
-        $this->importAttributes($self);
+        $this->importAttributes($config);
     }
 
     protected function getCacheNameSpace(): string
@@ -108,9 +81,9 @@ class Torrent
         return app()->site->getUser($this->owner_id);
     }
 
-    public function getInfoHash(): string
+    public function getInfoHash($hex = true): string
     {
-        return bin2hex($this->info_hash);
+        return $hex ? bin2hex($this->info_hash) : $this->info_hash;
     }
 
     public function getStatus(): string
@@ -163,24 +136,9 @@ class Torrent
         return app()->site->CategoryDetail($this->category);
     }
 
-    public function getTorrentName(): string
-    {
-        return $this->torrent_name;
-    }
-
-    public function getTorrentType(): string
-    {
-        return $this->torrent_type;
-    }
-
     public function getTorrentSize(): int
     {
         return $this->torrent_size;
-    }
-
-    public function getTorrentStructure(): array
-    {
-        return json_decode($this->torrent_structure, true);
     }
 
     public function getTeamId()
@@ -190,7 +148,9 @@ class Torrent
 
     public function getTeam()
     {
-        if ($this->team == 0) return false;
+        if ($this->team == 0) {
+            return false;
+        }
         return app()->site->ruleTeam()[$this->team];
     }
 
@@ -201,7 +161,9 @@ class Torrent
 
     public function getQuality(string $quality)
     {
-        if ($this->getQualityId($quality) == 0) return false;
+        if ($this->getQualityId($quality) == 0) {
+            return false;
+        }
         return app()->site->ruleQuality($quality)[$this->getQualityId($quality)];
     }
 
@@ -215,7 +177,9 @@ class Torrent
      */
     public function getTags(): array
     {
-        if (is_string($this->tags)) $this->tags = json_decode($this->tags, true);
+        if (is_string($this->tags)) {
+            $this->tags = json_decode($this->tags, true);
+        }
         return $this->tags ?? [];
     }
 
@@ -228,7 +192,9 @@ class Torrent
         $tags = $this->getTags();
         $rule_pinned_tags = app()->site->rulePinnedTags();
         foreach ($rule_pinned_tags as $tag_name => $tag_class) {
-            if (in_array($tag_name, $tags)) $pinned_tags[$tag_name] = $tag_class;
+            if (in_array($tag_name, $tags)) {
+                $pinned_tags[$tag_name] = $tag_class;
+            }
         }
         return $pinned_tags;
     }
@@ -243,6 +209,21 @@ class Torrent
         return (boolean)$this->hr;
     }
 
+    public function getTorrentName(): string
+    {
+        return $this->torrent_name;
+    }
+
+    public function getTorrentType(): string
+    {
+        return $this->torrent_type;
+    }
+
+    public function getTorrentStructure(): array
+    {
+        return json_decode($this->torrent_structure, true);
+    }
+
     public function hasNfo(): bool
     {
         return (boolean)$this->nfo;
@@ -255,7 +236,9 @@ class Torrent
      */
     public function getNfo($convert = true, $swedishmagic = false)
     {
-        if ($convert) return self::nfoConvert($this->nfo, $swedishmagic);
+        if ($convert) {
+            return self::nfoConvert($this->nfo, $swedishmagic);
+        }
         return $this->nfo;
     }
 
@@ -289,7 +272,8 @@ class Torrent
             $s = preg_replace(
                 ["/([ -~])\305([ -~])/", "/([ -~])\304([ -~])/", "/([ -~])\326([ -~])/"],
                 ["\\1\217\\2", "\\1\216\\2", "\\1\231\\2"],
-                $s); // ?
+                $s
+            ); // ?
         }
         return $s;
     }
@@ -299,10 +283,9 @@ class Torrent
     {
         return $this->getCacheValue('last_comments_details', function () {
             $offset = $this->comments / $this->comment_perpage;
-            return app()->pdo->createCommand('SELECT * FROM torrent_comments WHERE torrent_id = :tid LIMIT :o, :l;')->bindParams([
+            return app()->pdo->prepare('SELECT * FROM torrent_comments WHERE torrent_id = :tid LIMIT :o, :l;')->bindParams([
                 'tid' => $this->id, 'o' => intval($offset), 'l' => $this->comment_perpage
             ])->queryAll();
         });
     }
-
 }

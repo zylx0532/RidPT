@@ -6,6 +6,10 @@
 # Test File
 application/Controllers/TestController.php
 
+# PHPCS
+/phpcs.xml
+.php_cs.cache
+
 # Backup Folder
 /backup/
 
@@ -61,6 +65,7 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
 ### Windows template
 # Windows thumbnail cache files
 Thumbs.db

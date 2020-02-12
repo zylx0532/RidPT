@@ -8,7 +8,8 @@
 
 namespace App\Models\Form\Auth;
 
-use App\Entity\User;
+use App\Entity\User\UserStatus;
+
 use Rid\Helpers\StringHelper;
 use Rid\Validators\CaptchaTrait;
 use Rid\Validators\Validator;
@@ -42,34 +43,37 @@ class UserRecoverForm extends Validator
      * @return bool|string  bool(true) means flush success ,
      *                      any other value (string) performs like error msg
      */
-    public function flush() {
+    public function flush()
+    {
         // Check this email is in our database or not?
-        $user_info = app()->pdo->createCommand('SELECT `id`,`username`,`status` FROM `users` WHERE `email` = :email;')->bindParams([
+        $user_info = app()->pdo->prepare('SELECT `id`,`username`,`status` FROM `users` WHERE `email` = :email;')->bindParams([
             'email' => $this->email
         ])->queryOne();
         if ($user_info !== false) {
-            if ($user_info['status'] !== User::STATUS_CONFIRMED) {
+            if ($user_info['status'] !== UserStatus::CONFIRMED) {
                 return 'std_user_account_unconfirmed';
             }
 
             // Send user email to get comfirm link
             $confirm_key = StringHelper::getRandomString(32);
-            app()->pdo->createCommand('INSERT INTO `user_confirm` (`uid`,`secret`,`create_at`,`action`) VALUES (:uid,:secret,CURRENT_TIMESTAMP,:action)')->bindParams([
+            app()->pdo->prepare('INSERT INTO `user_confirm` (`uid`,`secret`,`create_at`,`action`) VALUES (:uid,:secret,CURRENT_TIMESTAMP,:action)')->bindParams([
                 'uid' => $user_info['id'], 'secret' => $confirm_key, 'action' => $this->_action
             ])->execute();
-            $confirm_url = app()->request->root() . '/auth/confirm?' . http_build_query([
+            $confirm_url = app()->request->getSchemeAndHttpHost() . '/auth/confirm?' . http_build_query([
                     'secret' => $confirm_key,
                     'action' => $this->_action
                 ]);
 
-            app()->site->sendEmail([$this->email], 'Please confirm your action to recover your password',
-                'email/user_recover', [
+            app()->site->sendEmail(
+                [$this->email],
+                'Please confirm your action to recover your password',
+                'email/user_recover',
+                [
                     'username' => $user_info['username'],
                     'confirm_url' => $confirm_url,
-                ]);
+                ]
+            );
         }
         return true;
     }
-
-
 }

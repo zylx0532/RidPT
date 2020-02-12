@@ -12,7 +12,13 @@ use Rid\Http\Controller;
 
 class MaintenanceController extends Controller
 {
-    public function actionIndex() {
+    public function actionIndex()
+    {
+        // Check if site is on maintenance status
+        if (!config('base.maintenance')) {
+            return app()->response->setRedirect('/index');
+        }
+
         return $this->render('maintenance');
     }
 }

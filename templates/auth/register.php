@@ -8,7 +8,7 @@
  * @var League\Plates\Template\Template $this
  */
 
-$register_type = app()->request->get('type', 'open')
+$register_type = app()->request->query->get('type', 'open')
 ?>
 
 <?= $this->layout('layout/base') ?>
@@ -66,7 +66,11 @@ $register_type = app()->request->get('type', 'open')
                                         <span class="input-group-addon"><span class="fas fa-envelope fa-fw"></span></span>
                                         <input type="email" class="form-control" id="email" name="email" required>
                                     </div>
-                                    <div class="help-block">We only allow those Email: <code><?= config('register.email_white_list') ?></code></div>
+                                    <?php if (config('register.check_email_whitelist') && !empty(config('register.email_white_list'))): ?>
+                                        <div class="help-block">
+                                            We only allow those Emails: <code><?= implode(',', config('register.email_white_list')) ?></code>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
 
                                 <div class="form-group">
@@ -96,7 +100,7 @@ $register_type = app()->request->get('type', 'open')
                                 </div>
 
                                 <?php if ($register_type == 'invite') : ?>
-                                    <?php $invite_hash = app()->request->get('invite_hash', '') ?>
+                                    <?php $invite_hash = app()->request->query->get('invite_hash', '') ?>
                                 <div class="form-group">
                                     <label for="invite_hash">Invite Code</label>
                                     <div class="input-group">

@@ -8,7 +8,6 @@
 
 namespace App\Models\Form\Links;
 
-
 use Rid\Validators\Validator;
 
 class RemoveForm extends Validator
@@ -30,7 +29,7 @@ class RemoveForm extends Validator
     /** @noinspection PhpUnused */
     protected function checkExistLinksById()
     {
-        $count = app()->pdo->createCommand('SELECT COUNT(`id`) FROM `links` WHERE id = :id')->bindParams([
+        $count = app()->pdo->prepare('SELECT COUNT(`id`) FROM `links` WHERE id = :id')->bindParams([
             'id' => $this->getInput('link_id')
         ])->queryScalar();
         if ($count == 0) {
@@ -40,7 +39,7 @@ class RemoveForm extends Validator
 
     public function flush()
     {
-        app()->pdo->createCommand('DELETE FROM `links` WHERE id = :id')->bindParams([
+        app()->pdo->prepare('DELETE FROM `links` WHERE id = :id')->bindParams([
             'id' => $this->link_id
         ])->execute();
         app()->redis->del('Site:links');

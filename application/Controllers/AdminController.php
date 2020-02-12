@@ -8,7 +8,6 @@
 
 namespace App\Controllers;
 
-
 use Rid\Http\Controller;
 
 class AdminController extends Controller
@@ -20,7 +19,7 @@ class AdminController extends Controller
 
     public function actionService()
     {
-        $provider = app()->request->get('provider');
+        $provider = app()->request->query->get('provider');
         switch (strtolower($provider)) {
             case 'mysql':
                 return $this->infoMysql();
@@ -47,14 +46,14 @@ class AdminController extends Controller
 
     private function infoMysql()
     {
-        $res = app()->pdo->createCommand('SHOW GLOBAL STATUS')->queryAll();
+        $res = app()->pdo->prepare('SHOW GLOBAL STATUS')->queryAll();
         $serverStatus = array_column($res, 'Value', 'Variable_name');
-        $startAt = app()->pdo->createCommand('SELECT UNIX_TIMESTAMP() - :uptime')->bindParams([
+        $startAt = app()->pdo->prepare('SELECT UNIX_TIMESTAMP() - :uptime')->bindParams([
             'uptime' => $serverStatus['Uptime']
         ])->queryScalar();
         $queryStats = [];
         $tmp_array = $serverStatus;
-        foreach ($tmp_array AS $name => $value) {
+        foreach ($tmp_array as $name => $value) {
             if (substr($name, 0, 4) == 'Com_') {
                 $queryStats[substr($name, 4)] = $value;
                 unset($serverStatus[$name]);

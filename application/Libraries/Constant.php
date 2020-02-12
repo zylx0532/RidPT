@@ -8,20 +8,11 @@
 
 namespace App\Libraries;
 
-
 class Constant
 {
     const cookie_name = 'rid';
 
-    const mapUsernameToId = 'Map:hash:user_username_to_user_id';
-    const mapUserPasskeyToId = 'Map:zset:user_passkey_to_user_id';  // (double) 0 means invalid
-    const mapUserSessionToId = 'Map:zset:user_session_to_user_id';  // (double) 0 means invalid
-
-    // --- invalid Zset  ---
-    const invalidUserIdZset = 'Site:zset:invalid_user_id';
-
     // Tracker Use
-    const trackerInvalidInfoHashZset = 'Tracker:invalid_torrent_info_hash';  // FIXME use set instead
     const trackerAllowedClientList = 'Tracker:allowed_client_list';
     const trackerAllowedClientExceptionList = 'Tracker:allowed_client_exception_list';
     const trackerValidClientZset = 'Tracker:valid_clients';
@@ -41,16 +32,17 @@ class Constant
         return 'User:user_content:' . $uid;  // Hash
     }
 
+    public static function userBaseContentByPasskey(string $passkey)
+    {
+        return 'User:base_passkey_content:' . $passkey; // String
+    }
+
     public static function torrentContent(int $tid)
     {
         return 'Torrent:torrent_content:' . $tid;  // Hash
     }
 
     // Tracker User
-    public static function trackerUserContentByPasskey(string $passkey)
-    {
-        return 'Tracker:user_passkey_content:' . $passkey; // String
-    }
 
     public static function trackerTorrentContentByInfoHash(string $bin2hex_hash)
     {

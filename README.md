@@ -25,7 +25,7 @@ Test Account Information:
 
     - Nginx 1.14.2
     - MySQL 8.0.17 **(At least)** 
-    - PHP 7.3.1 (With other extension which your can see in `composer.json`)
+    - PHP 7.4.1 (With other extension which your can see in `composer.json`)
     - Swoole 4.2.12
     - Redis 5.0.3 Stable
     - Bower 1.8.4 (A package manager for the web)
@@ -82,7 +82,7 @@ edit in Admin Panel.
 If your service is behind the CDN like Cloudflare, You must follow [How do I restore original visitor IP with Nginx?](https://support.cloudflare.com/hc/en-us/articles/200170706-How-do-I-restore-original-visitor-IP-with-Nginx)
 So that tracker can record the peer's ip address.
 
-7. Use the default `php bin/console service start -d` to let *RidPT* RUN in the background. Or you can use other daemon work like:
+7. Use the default `php bin/console server start -d` to let *RidPT* RUN in the background. Or you can use other daemon work like:
     - Systemctl: [ridpt.service](migration/ridpt.service)
 
 ## Basie Environment Setting in `.env`

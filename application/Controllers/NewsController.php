@@ -8,15 +8,16 @@
 
 namespace App\Controllers;
 
-
 use App\Models\Form\News;
 use Rid\Http\Controller;
+use Symfony\Component\HttpFoundation\Request;
 
 class NewsController extends Controller
 {
-    public function actionIndex() {
+    public function actionIndex()
+    {
         $pager = new News\SearchForm();
-        $pager->setInput(app()->request->get());
+        $pager->setInput(app()->request->query->all());
 
         $success = $pager->validate();
         if (!$success) {
@@ -26,16 +27,17 @@ class NewsController extends Controller
         }
     }
 
-    public function actionNew() {
-        if (app()->request->isPost()) {
+    public function actionNew()
+    {
+        if (app()->request->isMethod(Request::METHOD_POST)) {
             $newform = new News\EditForm();
-            $newform->setInput(app()->request->post());
+            $newform->setInput(app()->request->request->all());
             $success = $newform->validate();
             if (!$success) {
                 return $this->render('action/fail', ['title' => 'new blog failed', 'msg' => $newform->getError()]);
             } else {
                 $newform->flush();  // Save the news
-                return app()->response->redirect('/news');
+                return app()->response->setRedirect('/news');
             }
         } elseif (app()->auth->getCurUser()->isPrivilege('manage_news')) {
             return $this->render('news/edit');
@@ -45,37 +47,37 @@ class NewsController extends Controller
 
     public function actionEdit()
     {
-        if (app()->request->isPost()) {
+        if (app()->request->isMethod(Request::METHOD_POST)) {
             $newform = new News\EditForm();
-            $newform->setInput(app()->request->post());
+            $newform->setInput(app()->request->request->all());
             $success = $newform->validate();
             if (!$success) {
                 return $this->render('action/fail', ['title' => 'Upload Failed', 'msg' => $newform->getError()]);
             } else {
                 $newform->flush();  // Save the news
-                return app()->response->redirect('/news');
+                return app()->response->setRedirect('/news');
             }
         } elseif (app()->auth->getCurUser()->isPrivilege('manage_news')) {
-            $id = app()->request->get('id', 0);
+            $id = app()->request->query->get('id', 0);
             if (filter_var($id, FILTER_VALIDATE_INT) && $id > 0) {
                 // TODO add other check
-                $news = app()->pdo->createCommand('SELECT * FROM news WHERE id= :id')->bindParams(['id' => $id])->queryOne();
+                $news = app()->pdo->prepare('SELECT * FROM news WHERE id= :id')->bindParams(['id' => $id])->queryOne();
                 return $this->render('news/edit', ['news' => $news]);
             }
         }
         return $this->render('action/fail', ['title' => 'Action Failed', 'msg' => 'action not allowed']);
     }
 
-    public function actionDelete() {
+    public function actionDelete()
+    {
         if (app()->auth->getCurUser()->isPrivilege('manage_news')) {
-            $id = app()->request->get('id',0);
-            if (filter_var($id,FILTER_VALIDATE_INT) && $id > 0) {
+            $id = app()->request->query->get('id', 0);
+            if (filter_var($id, FILTER_VALIDATE_INT) && $id > 0) {
                 // TODO add other check
-                app()->pdo->createCommand('DELETE FROM news WHERE id= :id')->bindParams(['id'=>$id])->execute();
+                app()->pdo->prepare('DELETE FROM news WHERE id= :id')->bindParams(['id'=>$id])->execute();
             }
-            return app()->response->redirect('/news');
+            return app()->response->setRedirect('/news');
         }
         return $this->render('action/fail', ['title' => 'Action Failed', 'msg' => 'action not allowed']);
-
     }
 }
